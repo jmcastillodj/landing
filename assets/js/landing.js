@@ -39,28 +39,32 @@
     if (contact) new IntersectionObserver(function (e) { contactVisible = e[0].isIntersecting; upd(); }).observe(contact);
   }
 
-  /* ---------- Quote builder -> mailto ---------- */
-  var form = document.getElementById("quote");
-  if (form) {
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-      var d = new FormData(form);
-      var L = form.dataset;
-      var subject = (L.subject || "Mix & Mastering") + " · " + (d.get("service") || "") + " · " + (d.get("artist") || "");
-      var body = [
-        (L.lName || "Name") + ": " + (d.get("name") || ""),
-        (L.lArtist || "Artist") + ": " + (d.get("artist") || ""),
-        (L.lService || "Service") + ": " + (d.get("service") || ""),
-        (L.lTracks || "Tracks") + ": " + (d.get("tracks") || ""),
-        (L.lGenre || "Genre") + ": " + (d.get("genre") || ""),
-        (L.lLink || "Reference / demo") + ": " + (d.get("link") || ""),
-        "",
-        d.get("message") || ""
-      ].join("\n");
-      if (window.gtag) window.gtag("event", "generate_lead", { method: "quote_form", service: d.get("service") });
-      window.location.href = "mailto:" + (L.to || "info@jmcastillo.es") + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    });
+  /* ---------- Count-up de cifras ---------- */
+  var nums = document.querySelectorAll("[data-count]");
+  function runCount(el) {
+    var to = parseFloat(el.dataset.count), pre = el.dataset.pre || "", suf = el.dataset.suf || "";
+    var sep = document.documentElement.lang === "es" ? "." : ",";
+    var fmt = function (v) { return pre + String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, sep) + suf; };
+    if (reduce) { el.textContent = fmt(to); return; }
+    var t0 = performance.now(), dur = 1600;
+    (function step(now) {
+      var k = Math.min((now - t0) / dur, 1), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = fmt(to * e);
+      if (k < 1) requestAnimationFrame(step);
+    })(t0);
   }
+  if ("IntersectionObserver" in window) {
+    var cio = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { runCount(en.target); cio.unobserve(en.target); } });
+    }, { threshold: 0.4 });
+    nums.forEach(function (n) { cio.observe(n); });
+  }
+
+  /* ---------- Analytics: clics de conversión (si hay GA4) ---------- */
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("a[data-cta]");
+    if (a && window.gtag) window.gtag("event", "generate_lead", { method: a.dataset.cta, link_url: a.href });
+  });
 
   /* ---------- Year ---------- */
   var y = document.querySelector("[data-year]");

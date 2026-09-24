@@ -23,25 +23,30 @@ Las URLs canónicas apuntan a `https://jmcastillo.es/mezcla-y-mastering/` y `htt
 
 ¿Otro dominio? Reemplaza `https://jmcastillo.es/mezcla-y-mastering/` y `https://jmcastillo.es/en/mix-and-mastering/` en los 2 HTML, el sitemap y `llms.txt` (canonical, hreflang, og:url y JSON-LD).
 
-## ⚠️ Pendiente antes de publicar
+## Marca y contenido (extraídos de jmcastillo.es)
 
-El entorno donde se generó no tenía acceso a jmcastillo.es (bloqueo de red), así que **no se pudieron descargar tus imágenes ni tus tipografías**. Los datos de marca salen de lo que Google tiene indexado de tu web.
+- **Colores:** rojo `#FF2D2D` (fondos/hero) y `#E01E2D` (acentos), negro y blanco. Están en `:root` de `assets/css/landing.css`.
+- **Tipografías:** Cabin (títulos) + Karla (texto), las mismas que usa la web.
+- **Media:** logo, isotipo (favicon), sellos discográficos, fotos del estudio y carátulas certificadas, copiados a `assets/img/`.
+- **Datos:** tarifas y plazos de /servicios/, certificaciones de /certificaciones/ (37x Platino, 38x Oro, Premios Odeon), trayectoria de /nosotros/, cifras de la home (4.000M+ streams, 800+ canciones, 15+ años), WhatsApp y emails.
+- **Conversión:** todos los CTA llevan a `/servicios/` (reserva), WhatsApp o `/contacto/`. Los clics se registran como `generate_lead` en GA4 si está instalado.
 
-1. **Fotos.** Copia estas imágenes de tu web con estos nombres exactos. Mientras falten, se muestra un fondo de marca y no aparece ninguna imagen rota:
-   - `assets/img/jm-castillo-estudio.jpg`: tu foto en el estudio (vertical 4:5, ~800×1000). También se usa en el schema `Person`.
-   - `assets/img/mi-luz-rvfv-rels-b.jpg`: portada de «Mi Luz» (cuadrada, ~800×800).
-2. **Tipografías y colores.** Edita los tokens de `:root` al principio de `assets/css/landing.css` (`--font-display`, `--font-body`, `--accent`…) y el `<link>` de Google Fonts de los 2 HTML para que coincidan con tu web.
-3. **Verifica los datos.** Revisa la lista de artistas (Rels B, RVFV, David Bisbal, Camilo, Duki, Anitta, Lola Indigo) y las cifras de «Mi Luz» (8x Platino, +250M streams). Si tienes más créditos, discos certificados o **reseñas reales** de artistas, añádelos: es lo que más sube el E-E-A-T. No se han inventado precios, plazos ni testimonios.
-4. **Enlaces internos a tu web.** Hoy apuntan a la home (`https://jmcastillo.es/`) porque no se pudo leer tu menú. Cuando los tengas, cámbialos por tus URLs reales de *Trabajos/Portfolio*, *Contacto* o *Discografía*. Busca `https://jmcastillo.es/"` en los HTML.
-5. Añade la línea de `robots-snippet.txt` a tu robots.txt, y envía el sitemap en Google Search Console y Bing Webmaster Tools.
+## ⚠️ Revisa antes de publicar
+
+1. **Discos de Platino, dato inconsistente en tu web:** la home dice **36x** (también en la meta description), mientras que /certificaciones/ y /servicios/ dicen **37x**. La landing usa **37x**. Unifícalo en la web.
+2. **Post de «Mi Luz»:** su URL y su título dicen «6x discos de platino», pero ya son **8x**. Actualiza el título y el contenido (mantén la URL o pon una redirección 301).
+3. **Canibalización con la home:** el title de la home es «Estudio de Mezcla y Mastering en España». Para que Google no dude entre las dos URLs, deja la home orientada a marca (p. ej. «Jm Castillo | Ingeniero de Mezcla y Mastering · 37x Platino») y enlaza desde ella a `/mezcla-y-mastering/` con el anchor «mezcla y mastering online».
+4. Añade la línea de `robots-snippet.txt` a tu robots.txt (Yoast) o incluye el sitemap en Search Console.
 
 ## Interlinking que tienes que hacer DESDE tu web (muy importante)
 
 Una landing sin enlaces internos entrantes no posiciona. En jmcastillo.es:
 
 - **Menú principal:** añade «Mezcla y Mastering» → `/mezcla-y-mastering/` (y «Mix & Mastering» → `/en/mix-and-mastering/` en la versión inglesa o en el selector de idioma).
-- **Home:** en la sección de servicios, enlaza con anchor text descriptivo: *"servicio de mezcla y mastering online"*.
-- **Cada trabajo o crédito** (por ejemplo, la página de «Mi Luz» en tustereo.com si es tuya): añade una línea *"¿Quieres este sonido? Mezcla y mastering profesional"* → landing.
+- **Home:** en la sección de servicios (Mixing / Mastering), enlaza con anchor text descriptivo: *"mezcla y mastering online"*.
+- **/servicios/, /mixing/ y /mastering/:** enlace contextual a la landing (*"precios de mezcla y mastering online"*).
+- **Fichas de /artistas/:** una línea «Mezcla y mastering de Jm Castillo» enlazando a la landing.
+- **Posts del blog** (Mi Luz, Desamarte, Te Amo): añade *"¿Quieres este sonido? Mezcla y mastering profesional"* → landing.
 - **Footer global:** enlace a las dos versiones.
 - **Bio de Instagram, Linktree, SoundCloud, YouTube:** apunta a la landing según el idioma del público.
 
