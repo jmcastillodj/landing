@@ -31,7 +31,7 @@ El entorno donde se generó no tenía acceso a jmcastillo.es (bloqueo de red), a
    - `assets/img/jm-castillo-estudio.jpg`: tu foto en el estudio (vertical 4:5, ~800×1000). También se usa en el schema `Person`.
    - `assets/img/mi-luz-rvfv-rels-b.jpg`: portada de «Mi Luz» (cuadrada, ~800×800).
 2. **Tipografías y colores.** Edita los tokens de `:root` al principio de `assets/css/landing.css` (`--font-display`, `--font-body`, `--accent`…) y el `<link>` de Google Fonts de los 2 HTML para que coincidan con tu web.
-3. **Verifica los datos.** Revisa la lista de artistas (Rels B, RVFV, David Bisbal, Camilo, Duki, Anitta, Lola Indigo) y las cifras de «Mi Luz» (6x Platino, +250M streams). Si tienes más créditos, discos certificados o **reseñas reales** de artistas, añádelos: es lo que más sube el E-E-A-T. No se han inventado precios, plazos ni testimonios.
+3. **Verifica los datos.** Revisa la lista de artistas (Rels B, RVFV, David Bisbal, Camilo, Duki, Anitta, Lola Indigo) y las cifras de «Mi Luz» (8x Platino, +250M streams). Si tienes más créditos, discos certificados o **reseñas reales** de artistas, añádelos: es lo que más sube el E-E-A-T. No se han inventado precios, plazos ni testimonios.
 4. **Enlaces internos a tu web.** Hoy apuntan a la home (`https://jmcastillo.es/`) porque no se pudo leer tu menú. Cuando los tengas, cámbialos por tus URLs reales de *Trabajos/Portfolio*, *Contacto* o *Discografía*. Busca `https://jmcastillo.es/"` en los HTML.
 5. Añade la línea de `robots-snippet.txt` a tu robots.txt, y envía el sitemap en Google Search Console y Bing Webmaster Tools.
 
@@ -54,7 +54,7 @@ Dentro de la landing ya hay: índice de contenidos, enlaces contextuales entre s
 | **On-page** | Title y meta description con la keyword al inicio, H1 único, jerarquía H2/H3 con variantes semánticas (mezcla y masterización, mastering online, stem mastering, LUFS…), URLs limpias por idioma |
 | **Internacional** | `hreflang` es / en / x-default (x-default → EN para el mercado internacional), `og:locale`, textos redactados de forma nativa en cada idioma (no traducción literal) |
 | **Datos estructurados** | `@graph` JSON-LD: `WebSite`, `Person` (sameAs a redes), `ProfessionalService`, `Service` + `OfferCatalog`, `WebPage` (speakable, dateModified), `BreadcrumbList`, `FAQPage` (10 preguntas) |
-| **E-E-A-T** | Autoría clara, sección «Sobre mí» con trayectoria real, caso de éxito verificable («Mi Luz» 6x Platino), créditos de artistas, datos de contacto, fecha de actualización visible |
+| **E-E-A-T** | Autoría clara, sección «Sobre mí» con trayectoria real, caso de éxito verificable («Mi Luz» 8x Platino), créditos de artistas, datos de contacto, fecha de actualización visible |
 | **GEO (IA)** | Bloques de «respuesta directa» al inicio de cada sección, definiciones citables, tablas (mezcla vs mastering, LUFS por plataforma), checklist, FAQ, `llms.txt` |
 | **UX / Conversión** | Infografía animada interactiva (antes/después) en el hero, CTA fijo en móvil, formulario de presupuesto que prepara el email (evento `generate_lead` si hay GA4), escucha en SoundCloud |
 | **Rendimiento / a11y** | Sin frameworks, JS diferido (~8 KB), imágenes lazy con width/height, fuentes con `display=swap`, `prefers-reduced-motion`, skip-link, ARIA, contraste alto |
