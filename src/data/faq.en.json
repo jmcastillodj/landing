@@ -1,0 +1,35 @@
+[
+  {
+    "group": "Mixing and mastering",
+    "items": [
+      { "q": "What is mixing in music?", "a": "<p>Mixing is the process of blending and processing every track of a song (vocals, beat and instruments) with EQ, compression, effects, panning and automation so each element sounds clear, balanced and intentional.</p>" },
+      { "q": "What is mastering?", "a": "<p>Mastering is the last step before release: it optimizes the finished mix for competitive loudness and tonal consistency so it sounds just as good on every platform and device.</p>" },
+      { "q": "What's the difference between mixing and mastering?", "a": "<p>Mixing works on the individual tracks and builds the sound of the song; mastering works on the finished mix and prepares it for release. You mix first, then master. See the full <a href=\"#mixing-vs-mastering\">comparison table</a>.</p>" },
+      { "q": "How loud should my master be for Spotify?", "a": "<p>Spotify normalizes playback to around −14 LUFS integrated and recommends a true peak of −1 dBTP (−2 dBTP for masters louder than −14 LUFS). You don't need to master exactly to −14 LUFS: what matters is a master that's competitive for its genre and keeps its punch without distorting once normalized. See the <a href=\"#loudness\">platform table</a>.</p>" },
+      { "q": "Which genres do you mix and master?", "a": "<p>Mainly Latin and urban music (reggaeton, trap, Latin pop, R&amp;B, hip-hop), flamenco pop and pop. My credits include RVFV, Rels B, Duki, David Bisbal, Camilo, Luis Cortés and India Martínez, and my background is in electronic music production.</p>" }
+    ]
+  },
+  {
+    "group": "Service, pricing and turnaround",
+    "items": [
+      { "q": "How much does it cost to mix and master a song?", "a": "<p>Mixing + mastering one song (Full Mix/Mastering) costs <strong>€300</strong>. Mastering only is €100; stem mastering €150; Beat Mix or Vocal Mix €150; Full Mix €250; and Pro Mix/Master €400. Prices in euros, VAT not included. <a href=\"#rates\">See all rates</a>.</p>" },
+      { "q": "How long does mixing and mastering take?", "a": "<p><strong>3 to 5 business days</strong> on every plan. The Pro Mix/Master plan also includes priority scheduling.</p>" },
+      { "q": "How many revisions are included?", "a": "<p>Up to <strong>3 revisions</strong> on every plan, and up to <strong>10</strong> on Pro Mix/Master.</p>" },
+      { "q": "What do I get at the end?", "a": "<p>Your final, release-ready files for your distributor. With Pro Mix/Master you also get the mix stems (a cappella, backing vocals, drums, bass, synths…).</p>" },
+      { "q": "How and when do I pay?", "a": "<p>Once we confirm your plan, payment is made before the project starts. Prices don't include VAT.</p>" },
+      { "q": "Do you work with artists outside Spain?", "a": "<p>Yes. The whole process is online: you send your files, receive the mix, send notes and download the final files. I've worked with artists from Spain and Latin America such as Camilo (Colombia), Duki (Argentina) and Anitta (Brazil), and I work in English and Spanish.</p>" },
+      { "q": "How do I book a mix or master?", "a": "<p>Message me on <a href=\"https://wa.me/34623040053\" rel=\"noopener\" target=\"_blank\">WhatsApp (+34 623 040 053)</a> Monday to Friday, 8:00–15:00 Spain time, email <a href=\"mailto:info@jmcastillo.es\">info@jmcastillo.es</a>, or book directly on the <a href=\"https://jmcastillo.es/servicios/\" hreflang=\"es\">services page</a> (Spanish).</p>" }
+    ]
+  },
+  {
+    "group": "Files and delivery",
+    "items": [
+      { "q": "What are stems and how do I export them?", "a": "<p>Stems are the tracks of your project exported separately (lead vocal, backing vocals, drums, bass, music…). Export them as at least 44.1 kHz / 24-bit WAV files, with an uncompressed master channel, peaks no higher than −6 dB and no reverb, delay or compressors on the tracks. Read the <a href=\"#send-stems\">file guide</a>.</p>" },
+      { "q": "How do I send my project?", "a": "<p>Upload all the tracks to Google Drive, WeTransfer or a similar service and send the link to <a href=\"mailto:stems@jmcastillo.es\">stems@jmcastillo.es</a>.</p>" },
+      { "q": "What do I need to send for mastering?", "a": "<p>The instrumental and the vocal as WAV files of at least 44.1 kHz / 24-bit, with the master channel uncompressed and a final level of −6 dB.</p>" },
+      { "q": "I already have the beat. Can you mix just my vocals?", "a": "<p>Yes, that's the <strong>Vocal Mix</strong> (€150): vocal editing and advanced vocal mixing with compression, reverb, delay, Melodyne tuning and vocal alignment.</p>" },
+      { "q": "Can you mix just the beat or instrumental?", "a": "<p>Yes, with the <strong>Beat Mix</strong> (€150): the beat mixed with compression, EQ and effects. Vocal editing isn't included.</p>" },
+      { "q": "Should I send reference tracks?", "a": "<p>Highly recommended: one or two songs that sound the way you want yours to sound make the direction clear from the very first version.</p>" }
+    ]
+  }
+]

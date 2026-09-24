@@ -1,2 +1,0 @@
-# Añadir al robots.txt EXISTENTE de jmcastillo.es (no reemplazarlo)
-Sitemap: https://jmcastillo.es/sitemap-mix-mastering.xml

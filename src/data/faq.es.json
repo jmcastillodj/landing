@@ -1,0 +1,35 @@
+[
+  {
+    "group": "Mezcla y mastering",
+    "items": [
+      { "q": "¿Qué es la mezcla (mixing) de una canción?", "a": "<p>La mezcla es el proceso de combinar y procesar todas las pistas de una canción (voces, beat e instrumentos) con ecualización, compresión, efectos, panorama y automatización para que cada elemento suene claro, equilibrado y con intención. Más en la <a href=\"https://jmcastillo.es/mixing/\">guía sobre el mix</a>.</p>" },
+      { "q": "¿Qué es el mastering?", "a": "<p>El mastering es el último paso antes de publicar: optimiza la mezcla terminada para que tenga un volumen competitivo, coherencia tonal y suene igual de bien en cualquier plataforma y dispositivo. Más en la <a href=\"https://jmcastillo.es/mastering/\">guía del mastering</a>.</p>" },
+      { "q": "¿Qué diferencia hay entre mezcla y mastering?", "a": "<p>La mezcla trabaja con las pistas por separado y construye el sonido de la canción; el mastering trabaja con la mezcla terminada y la prepara para su publicación. Primero se mezcla y después se masteriza. Tienes la comparación completa en la <a href=\"#diferencias\">tabla de diferencias</a>.</p>" },
+      { "q": "¿A cuántos LUFS debe ir un master para Spotify?", "a": "<p>Spotify normaliza la reproducción a unos −14 LUFS integrados y recomienda un true peak de −1 dBTP (−2 dBTP si el master supera −14 LUFS). No hace falta masterizar exactamente a −14: lo importante es un master competitivo en su género que no pierda pegada ni distorsione al normalizarse. Mira la <a href=\"#loudness\">tabla por plataformas</a>.</p>" },
+      { "q": "¿Qué géneros mezclas y masterizas?", "a": "<p>Sobre todo música urbana (reggaetón, trap, pop urbano, R&amp;B, rap), flamenco pop y pop. Mis créditos incluyen a RVFV, Rels B, Duki, David Bisbal, Camilo, Luis Cortés o India Martínez, y vengo de la producción de música electrónica.</p>" }
+    ]
+  },
+  {
+    "group": "Servicio, precios y plazos",
+    "items": [
+      { "q": "¿Cuánto cuesta mezclar y masterizar una canción?", "a": "<p>La mezcla + mastering de una canción (Full Mix/Mastering) cuesta <strong>300€</strong>. Solo mastering, 100€; stem mastering, 150€; Beat Mix o Vocal Mix, 150€; Full Mix, 250€; y Pro Mix/Master, 400€. IVA no incluido. <a href=\"#tarifas\">Ver todas las tarifas</a>.</p>" },
+      { "q": "¿Cuánto tarda la mezcla y el mastering?", "a": "<p>De <strong>3 a 5 días laborables</strong> en todos los planes. El plan Pro Mix/Master incluye además prioridad en agenda.</p>" },
+      { "q": "¿Cuántas revisiones están incluidas?", "a": "<p>Hasta <strong>3 revisiones</strong> en todos los planes, y hasta <strong>10</strong> en Pro Mix/Master.</p>" },
+      { "q": "¿Qué recibo al terminar?", "a": "<p>Tus archivos finales, listos para publicar en tu distribuidora. Con Pro Mix/Master también recibes los stems de la mezcla (a capella, coros, drums, bass, synths…).</p>" },
+      { "q": "¿Cómo y cuándo se paga?", "a": "<p>Se confirma el plan elegido y el pago se realiza antes de comenzar el proyecto. Los precios no incluyen IVA.</p>" },
+      { "q": "¿Trabajas online con artistas de fuera de España?", "a": "<p>Sí. Todo el proceso es online: envías tus archivos, recibes la mezcla, mandas tus comentarios y descargas los archivos finales. He trabajado con artistas de España y Latinoamérica como Camilo, Duki o Anitta. <a href=\"/en/mixing-and-mastering/\" hreflang=\"en\" lang=\"en\">English version</a>.</p>" },
+      { "q": "¿Cómo reservo mi mezcla o mastering?", "a": "<p>Elige tu plan en <a href=\"https://jmcastillo.es/servicios/\">servicios</a> y reserva, o escríbeme por <a href=\"https://wa.me/34623040053\" rel=\"noopener\" target=\"_blank\">WhatsApp (+34 623 040 053)</a> de lunes a viernes de 8:00 a 15:00, o a <a href=\"mailto:info@jmcastillo.es\">info@jmcastillo.es</a>.</p>" }
+    ]
+  },
+  {
+    "group": "Archivos y envío",
+    "items": [
+      { "q": "¿Qué son los stems y cómo los exporto?", "a": "<p>Los stems son las pistas de tu proyecto exportadas por separado (voz principal, coros, batería, bajo, música…). Expórtalas como mínimo en WAV 44.100 Hz / 24 bits, con el canal master sin comprimir, sin superar −6 dB y sin reverbs, delays ni compresores en las pistas. Consulta la <a href=\"#enviar-pistas\">guía de envío</a>.</p>" },
+      { "q": "¿Cómo envío mi proyecto?", "a": "<p>Sube todas las pistas a Google Drive, WeTransfer o un servicio similar y envía el enlace a <a href=\"mailto:stems@jmcastillo.es\">stems@jmcastillo.es</a>.</p>" },
+      { "q": "¿Qué tengo que enviar para el mastering?", "a": "<p>La instrumental y la voz en archivos WAV de al menos 44.100 Hz / 24 bits, con el canal master sin comprimir y el volumen final a −6 dB.</p>" },
+      { "q": "Tengo el instrumental hecho, ¿puedes mezclar solo mis voces?", "a": "<p>Sí, para eso está el <strong>Vocal Mix</strong> (150€): edición de voces y mezcla avanzada con compresión, reverb, delay, afinación con Melodyne y alineación vocal.</p>" },
+      { "q": "¿Puedes mezclar solo el beat o el instrumental?", "a": "<p>Sí, con el <strong>Beat Mix</strong> (150€): mezcla del beat con compresión, EQ y efectos. No incluye edición de voces.</p>" },
+      { "q": "¿Debo enviar canciones de referencia?", "a": "<p>Es muy recomendable: una o dos canciones que suenen como te gustaría que sonara la tuya ayudan a entender la dirección que buscas desde la primera versión.</p>" }
+    ]
+  }
+]

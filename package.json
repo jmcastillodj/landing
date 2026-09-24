@@ -1,0 +1,20 @@
+{
+  "name": "jmcastillo-mix-mastering-landing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p jsconfig.json",
+    "lint": "html-validate \"dist/**/*.html\"",
+    "check": "node scripts/check.mjs",
+    "audit": "npm run build && npm run typecheck && npm run lint && npm run check"
+  },
+  "devDependencies": {
+    "axe-core": "^4.13.0",
+    "esbuild": "^0.24.2",
+    "html-validate": "^8.29.0",
+    "lighthouse": "^12.8.2",
+    "playwright-core": "1.56",
+    "typescript": "5.6"
+  }
+}

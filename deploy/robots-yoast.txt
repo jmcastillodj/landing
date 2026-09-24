@@ -1,0 +1,2 @@
+# Añadir en Yoast SEO → Herramientas → Editor de archivos → robots.txt (debajo de la línea Sitemap existente):
+Sitemap: https://jmcastillo.es/sitemap-mezcla-y-mastering.xml

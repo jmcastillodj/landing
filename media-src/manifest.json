@@ -1,0 +1,182 @@
+{
+  "jm-castillo-ingeniero-mezcla-mastering": [
+    {
+      "file": "jm-castillo-ingeniero-mezcla-mastering-480.webp",
+      "w": 480,
+      "h": 600,
+      "kb": 20.3
+    },
+    {
+      "file": "jm-castillo-ingeniero-mezcla-mastering-760.webp",
+      "w": 760,
+      "h": 949,
+      "kb": 79.1
+    },
+    {
+      "file": "jm-castillo-ingeniero-mezcla-mastering-1000.webp",
+      "w": 1000,
+      "h": 1249,
+      "kb": 143.2
+    }
+  ],
+  "estudio-mezcla-mastering-jm-castillo-sevilla": [
+    {
+      "file": "estudio-mezcla-mastering-jm-castillo-sevilla-640.webp",
+      "w": 640,
+      "h": 427,
+      "kb": 20.5
+    },
+    {
+      "file": "estudio-mezcla-mastering-jm-castillo-sevilla-1024.webp",
+      "w": 1024,
+      "h": 683,
+      "kb": 66.5
+    },
+    {
+      "file": "estudio-mezcla-mastering-jm-castillo-sevilla-1500.webp",
+      "w": 1500,
+      "h": 1000,
+      "kb": 137
+    }
+  ],
+  "sellos-discograficas-warner-universal-sony": [
+    {
+      "file": "sellos-discograficas-warner-universal-sony-650.webp",
+      "w": 650,
+      "h": 58,
+      "kb": 12
+    },
+    {
+      "file": "sellos-discograficas-warner-universal-sony-1300.webp",
+      "w": 1300,
+      "h": 116,
+      "kb": 26.3
+    }
+  ],
+  "video-rueda-rvfv-david-bisbal": [
+    {
+      "file": "video-rueda-rvfv-david-bisbal-640.webp",
+      "w": 640,
+      "h": 361,
+      "kb": 27.9
+    },
+    {
+      "file": "video-rueda-rvfv-david-bisbal-1280.webp",
+      "w": 1280,
+      "h": 722,
+      "kb": 64.7
+    }
+  ],
+  "video-desamarte-luis-cortes-camilo": [
+    {
+      "file": "video-desamarte-luis-cortes-camilo-640.webp",
+      "w": 640,
+      "h": 427,
+      "kb": 51
+    },
+    {
+      "file": "video-desamarte-luis-cortes-camilo-1200.webp",
+      "w": 1200,
+      "h": 800,
+      "kb": 109.5
+    }
+  ],
+  "covers/dominicana-rvfv-morad": [
+    {
+      "file": "covers/dominicana-rvfv-morad-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 22.5
+    },
+    {
+      "file": "covers/dominicana-rvfv-morad-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 88.3
+    }
+  ],
+  "covers/mi-luz-rvfv-rels-b": [
+    {
+      "file": "covers/mi-luz-rvfv-rels-b-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 16.7
+    },
+    {
+      "file": "covers/mi-luz-rvfv-rels-b-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 62.8
+    }
+  ],
+  "covers/mirandote-rvfv": [
+    {
+      "file": "covers/mirandote-rvfv-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 7.9
+    },
+    {
+      "file": "covers/mirandote-rvfv-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 22.8
+    }
+  ],
+  "covers/pantera-rvfv-duki": [
+    {
+      "file": "covers/pantera-rvfv-duki-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 31.4
+    },
+    {
+      "file": "covers/pantera-rvfv-duki-500.webp",
+      "w": 500,
+      "h": 500,
+      "kb": 72.9
+    }
+  ],
+  "covers/que-me-lleve-el-aire-luis-cortes": [
+    {
+      "file": "covers/que-me-lleve-el-aire-luis-cortes-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 4.7
+    },
+    {
+      "file": "covers/que-me-lleve-el-aire-luis-cortes-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 16.3
+    }
+  ],
+  "covers/tigini-rvfv-kikimoteleba": [
+    {
+      "file": "covers/tigini-rvfv-kikimoteleba-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 21.4
+    },
+    {
+      "file": "covers/tigini-rvfv-kikimoteleba-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 70
+    }
+  ],
+  "covers/trendy-lola-indigo-rvfv": [
+    {
+      "file": "covers/trendy-lola-indigo-rvfv-300.webp",
+      "w": 300,
+      "h": 300,
+      "kb": 18.4
+    },
+    {
+      "file": "covers/trendy-lola-indigo-rvfv-640.webp",
+      "w": 640,
+      "h": 640,
+      "kb": 88.5
+    }
+  ]
+}

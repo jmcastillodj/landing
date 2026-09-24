@@ -1,78 +1,98 @@
-# Landing «Mezcla y Mastering» / «Mix & Mastering» · Jm Castillo
+# Landing «Mezcla y mastering» · «Mixing and mastering» — Jm Castillo
 
-Landing bilingüe (ES + EN) para posicionar en Google, y en buscadores con IA (GEO), por **"mezcla y mastering"**, **"mix & mastering"** y sus variantes, y para llevar el tráfico a [jmcastillo.es](https://jmcastillo.es/).
+Landing bilingüe para posicionar en Google y en buscadores con IA por **mezcla y mastering / mix & mastering / mixing and mastering**, y convertir ese tráfico hacia [jmcastillo.es](https://jmcastillo.es/) (reserva en `/servicios/`, WhatsApp y `/contacto/`).
 
-Es HTML/CSS/JS estático, sin dependencias ni build. Funciona en cualquier hosting y también dentro de WordPress.
+- ES: `https://jmcastillo.es/mezcla-y-mastering/`
+- EN: `https://jmcastillo.es/en/mixing-and-mastering/`
+
+HTML estático sin frameworks: 100/100/100/100 en Lighthouse (móvil y escritorio). El detalle está en [AUDITORIA.md](AUDITORIA.md).
+
+## Estructura
 
 ```
-mezcla-y-mastering/index.html      → https://jmcastillo.es/mezcla-y-mastering/      (ES)
-en/mix-and-mastering/index.html    → https://jmcastillo.es/en/mix-and-mastering/    (EN)
-assets/css/landing.css             → estilos + tokens de marca (colores, tipografías)
-assets/js/landing.js               → infografía animada, menú, formulario → email
-assets/img/                        → favicon, imágenes OG (1200×630) y huecos para fotos
-sitemap-mix-mastering.xml          → sitemap con hreflang + imágenes
-robots-snippet.txt                 → línea para añadir al robots.txt actual
-llms.txt                           → resumen para LLMs (GEO)
+src/                         ← fuente (se edita aquí)
+  mezcla-y-mastering/index.html
+  en/mixing-and-mastering/index.html
+  assets/css/landing.css     ← tokens de marca (rojo #FF2D2D/#E01E2D, Cabin + Karla)
+  assets/js/landing.js       ← menú, reveal, contadores, vídeos, copiar email
+  assets/js/scope.js         ← instrumento del hero (goniómetro + loudness, Canvas)
+  assets/js/ab-player.js     ← comparador antes/después (Web Audio, carga bajo demanda)
+  assets/img/ · assets/fonts/ · assets/audio/
+  data/faq.es.json · faq.en.json · ab-examples.json
+  root/                      ← sitemap, llms.txt y .htaccess por carpeta
+media-src/                   ← originales descargados de jmcastillo.es (no se publican)
+scripts/                     ← build, imágenes, OG y auditoría
+deploy/                      ← fragmentos para el .htaccess raíz y robots.txt (Yoast)
+dist/                        ← RESULTADO LISTO PARA SUBIR
 ```
 
-## Por qué en subcarpeta de jmcastillo.es (recomendado)
+## Comandos
 
-Las URLs canónicas apuntan a `https://jmcastillo.es/mezcla-y-mastering/` y `https://jmcastillo.es/en/mix-and-mastering/`. Al publicarlo en subcarpeta, la landing hereda la autoridad del dominio y la reparte en los dos sentidos. Un dominio o subdominio nuevo empezaría de cero.
+```bash
+npm install
+npm run build           # genera dist/ (CSS inline, JS con hash, FAQ + JSON-LD desde datos)
+npm run typecheck       # TypeScript --checkJs strict
+npm run lint            # html-validate sobre dist/
+npm run check           # auditoría: consola, 404, responsive, axe WCAG, canonical, hreflang, sitemap, JSON-LD, enlaces
+node scripts/check.mjs --lighthouse   # + Lighthouse
+node scripts/images.mjs # regenera WebP responsive desde media-src/
+node scripts/og.mjs     # regenera las imágenes Open Graph
+```
 
-**Despliegue:** sube el contenido de este repo a la raíz del hosting de jmcastillo.es. Se crean las carpetas `mezcla-y-mastering/`, `en/mix-and-mastering/` y `assets/`, y no se toca nada de WordPress. Si ya existe una carpeta `/assets/` en el servidor, cámbiale el nombre y actualiza las rutas.
+## Despliegue en jmcastillo.es (LiteSpeed + WordPress)
 
-¿Otro dominio? Reemplaza `https://jmcastillo.es/mezcla-y-mastering/` y `https://jmcastillo.es/en/mix-and-mastering/` en los 2 HTML, el sitemap y `llms.txt` (canonical, hreflang, og:url y JSON-LD).
+1. `npm run build`.
+2. Sube **el contenido de `dist/`** a la raíz del hosting (junto a `wp-content`). Se crean `mezcla-y-mastering/`, `en/mixing-and-mastering/`, `assets/`, `sitemap-mezcla-y-mastering.xml` y `llms.txt`. WordPress no se toca: sus reglas no reescriben carpetas físicas.
+3. Pega `deploy/htaccess-raiz.txt` en el `.htaccess` raíz **antes** de `# BEGIN WordPress` (redirecciones 301 de variantes como `/mezcla-mastering/` o `/en/mix-and-mastering/`).
+4. Yoast → Herramientas → Editor de archivos: añade la línea de `deploy/robots-yoast.txt`.
+5. Search Console: envía `sitemap-mezcla-y-mastering.xml` e inspecciona las dos URLs.
+6. Comprueba cabeceras: `curl -I https://jmcastillo.es/mezcla-y-mastering/`. Debe aparecer `content-security-policy`, y los assets con `cache-control: max-age=31536000`.
 
-## Marca y contenido (extraídos de jmcastillo.es)
+## Mapa de enlazado interno
 
-- **Colores:** rojo `#FF2D2D` (fondos/hero) y `#E01E2D` (acentos), negro y blanco. Están en `:root` de `assets/css/landing.css`.
-- **Tipografías:** Cabin (títulos) + Karla (texto), las mismas que usa la web.
-- **Media:** logo, isotipo (favicon), sellos discográficos, fotos del estudio y carátulas certificadas, copiados a `assets/img/`.
-- **Datos:** tarifas y plazos de /servicios/, certificaciones de /certificaciones/ (37x Platino, 38x Oro, Premios Odeon), trayectoria de /nosotros/, cifras de la home (4.000M+ streams, 800+ canciones, 15+ años), WhatsApp y emails.
-- **Conversión:** todos los CTA llevan a `/servicios/` (reserva), WhatsApp o `/contacto/`. Los clics se registran como `generate_lead` en GA4 si está instalado.
+**Desde la landing hacia la web** (anchors variados, sin abusar de la exact-match):
 
-## ⚠️ Revisa antes de publicar
+| Destino | Anchors usados | Dónde |
+|---|---|---|
+| `/servicios/` | «Solicita tu mezcla», «Reservar», «Elige tu plan y reserva», «servicios» | nav, hero, trabajos, tarifas (×7), CTA final, CTA móvil |
+| `/certificaciones/` | «Certificaciones», «mis certificaciones», «Discos de Platino y Oro» | nav, trabajos, pie |
+| `/trabajos/` | «Trabajos», «trabajos», «y muchos más», «Últimos trabajos» | nav, créditos, trabajos, pie |
+| `/nosotros/` | «Sobre mí», «Conoce toda mi trayectoria» | nav, experiencia |
+| `/contacto/` | «Contacto», «Formulario de contacto» | nav, CTA final, pie |
+| `/mixing/` | «guía sobre qué es el mix en una canción», «Qué es el mix» | guía, FAQ, pie |
+| `/mastering/` | «guía del mastering», «Qué es el mastering» | guía, FAQ, pie |
+| `/artistas/*` (16 fichas) | nombre del artista | créditos, portadas, FAQ |
+| post «Mi Luz» | «La historia de «Mi Luz»» | caso destacado |
+| `/blog/` | «Blog» | pie |
 
-1. **Discos de Platino, dato inconsistente en tu web:** la home dice **36x** (también en la meta description), mientras que /certificaciones/ y /servicios/ dicen **37x**. La landing usa **37x**. Unifícalo en la web.
-2. **Post de «Mi Luz»:** su URL y su título dicen «6x discos de platino», pero ya son **8x**. Actualiza el título y el contenido (mantén la URL o pon una redirección 301).
-3. **Canibalización con la home:** el title de la home es «Estudio de Mezcla y Mastering en España». Para que Google no dude entre las dos URLs, deja la home orientada a marca (p. ej. «Jm Castillo | Ingeniero de Mezcla y Mastering · 37x Platino») y enlaza desde ella a `/mezcla-y-mastering/` con el anchor «mezcla y mastering online».
-4. Añade la línea de `robots-snippet.txt` a tu robots.txt (Yoast) o incluye el sitemap en Search Console.
+**Desde la web hacia la landing (tienes que añadirlos en WordPress):**
 
-## Interlinking que tienes que hacer DESDE tu web (muy importante)
+| Página de jmcastillo.es | Anchor sugerido | Destino |
+|---|---|---|
+| Menú principal (Servicios → submenú) | Mezcla y mastering | `/mezcla-y-mastering/` |
+| Home, bloque «Mixing / Mastering» | mezcla y mastering online | `/mezcla-y-mastering/` |
+| `/servicios/` (arriba de las tarifas) | ¿Mezcla o mastering? Te lo explico aquí | `/mezcla-y-mastering/` |
+| `/mixing/` y `/mastering/` (al final) | precios y proceso de mezcla y mastering | `/mezcla-y-mastering/#tarifas` |
+| Fichas de `/artistas/` | mezcla y mastering de Jm Castillo | `/mezcla-y-mastering/` |
+| Posts del blog | ¿Quieres este sonido? | `/mezcla-y-mastering/` |
+| Pie global | Mix & mastering in English | `/en/mixing-and-mastering/` |
+| Bio de Instagram / YouTube | — | según el idioma del público |
 
-Una landing sin enlaces internos entrantes no posiciona. En jmcastillo.es:
+## Mapa de keywords por sección
 
-- **Menú principal:** añade «Mezcla y Mastering» → `/mezcla-y-mastering/` (y «Mix & Mastering» → `/en/mix-and-mastering/` en la versión inglesa o en el selector de idioma).
-- **Home:** en la sección de servicios (Mixing / Mastering), enlaza con anchor text descriptivo: *"mezcla y mastering online"*.
-- **/servicios/, /mixing/ y /mastering/:** enlace contextual a la landing (*"precios de mezcla y mastering online"*).
-- **Fichas de /artistas/:** una línea «Mezcla y mastering de Jm Castillo» enlazando a la landing.
-- **Posts del blog** (Mi Luz, Desamarte, Te Amo): añade *"¿Quieres este sonido? Mezcla y mastering profesional"* → landing.
-- **Footer global:** enlace a las dos versiones.
-- **Bio de Instagram, Linktree, SoundCloud, YouTube:** apunta a la landing según el idioma del público.
+| Sección | ES | EN |
+|---|---|---|
+| Title/H1 | mezcla y mastering, mezcla y mastering online, mastering profesional | mixing and mastering, mixing and mastering services, online mixing and mastering |
+| Hero/créditos | ingeniero de mezcla y mastering, ingeniero de mezcla reggaetón | mixing engineer, mastering engineer, Latin urban mixing engineer |
+| Guía | qué es la mezcla musical, qué es el mastering, diferencia entre mezcla y mastering, mezcla de voces, stem mastering | what is mixing, what is mastering, mixing vs mastering, vocal mixing, stem mastering |
+| Loudness | a cuántos LUFS masterizar para Spotify | how loud should a master be for Spotify, LUFS |
+| Proceso/envío | cómo enviar pistas para mezcla, cómo exportar stems | how to prepare stems for mixing |
+| Tarifas | cuánto cuesta mezclar y masterizar una canción, precio mezcla y mastering | how much does mixing and mastering cost |
 
-Dentro de la landing ya hay: índice de contenidos, enlaces contextuales entre secciones, migas de pan hacia la home, cambio ES⇄EN con `hreflang`, bloque «Sigue explorando», footer con enlaces y todos los CTA hacia email o la web.
+## Contenido y veracidad
 
-## Qué incluye (SEO / EEAT / GEO)
+Todo el contenido procede de jmcastillo.es (servicios, certificaciones, sobre mí, home) o de datos que has confirmado («Mi Luz» 8x Platino). No se han inventado testimonios, reseñas, cifras ni clientes. Los valores del instrumento del hero están rotulados como «ilustrativos».
 
-| Área | Implementado |
-|---|---|
-| **On-page** | Title y meta description con la keyword al inicio, H1 único, jerarquía H2/H3 con variantes semánticas (mezcla y masterización, mastering online, stem mastering, LUFS…), URLs limpias por idioma |
-| **Internacional** | `hreflang` es / en / x-default (x-default → EN para el mercado internacional), `og:locale`, textos redactados de forma nativa en cada idioma (no traducción literal) |
-| **Datos estructurados** | `@graph` JSON-LD: `WebSite`, `Person` (sameAs a redes), `ProfessionalService`, `Service` + `OfferCatalog`, `WebPage` (speakable, dateModified), `BreadcrumbList`, `FAQPage` (10 preguntas) |
-| **E-E-A-T** | Autoría clara, sección «Sobre mí» con trayectoria real, caso de éxito verificable («Mi Luz» 8x Platino), créditos de artistas, datos de contacto, fecha de actualización visible |
-| **GEO (IA)** | Bloques de «respuesta directa» al inicio de cada sección, definiciones citables, tablas (mezcla vs mastering, LUFS por plataforma), checklist, FAQ, `llms.txt` |
-| **UX / Conversión** | Infografía animada interactiva (antes/después) en el hero, CTA fijo en móvil, formulario de presupuesto que prepara el email (evento `generate_lead` si hay GA4), escucha en SoundCloud |
-| **Rendimiento / a11y** | Sin frameworks, JS diferido (~8 KB), imágenes lazy con width/height, fuentes con `display=swap`, `prefers-reduced-motion`, skip-link, ARIA, contraste alto |
-| **Social** | Open Graph y Twitter Card con imágenes 1200×630 por idioma |
+## Pendientes
 
-### Mapa de keywords
-
-- **ES:** mezcla y mastering · mezcla y mastering online · mezcla y masterización · ingeniero de mezcla y mastering · mastering para Spotify · precio mezcla y mastering · cómo preparar pistas para mezcla
-- **EN:** mix and mastering · mixing and mastering services · online mixing and mastering · mixing engineer for hire · reggaeton / Latin mixing engineer · mastering for Spotify LUFS · how to prepare stems for mixing
-
-### Siguientes pasos recomendados
-
-- Añadir **reseñas reales** (Google Business Profile, SoundBetter…) y marcarlas con `Review` solo si son verificables.
-- Incrustar 2 o 3 **antes/después reales** (SoundCloud privado o audio propio): es la prueba de experiencia más potente.
-- Crear artículos de blog satélite (*"cómo mezclar voces de reggaetón"*, *"LUFS para Spotify"*) que enlacen a la landing.
-- Si más adelante publicas precios fijos, añade `price` y `priceCurrency` a los `Offer` del JSON-LD.
+Los tienes en [AUDITORIA.md §5](AUDITORIA.md): canibalización con la home, 36x vs 37x, título del post de «Mi Luz», audios antes/después, testimonios reales y analítica con consentimiento.

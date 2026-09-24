@@ -1,0 +1,12 @@
+# Pegar en el .htaccess de la RAÍZ de jmcastillo.es, ANTES del bloque "# BEGIN WordPress".
+# Redirige variantes de URL a la versión canónica (301) y /en/ a la landing en inglés.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^mezcla-mastering/?$ /mezcla-y-mastering/ [R=301,L]
+RewriteRule ^mix-y-mastering/?$ /mezcla-y-mastering/ [R=301,L]
+RewriteRule ^mezcla-y-mastering$ /mezcla-y-mastering/ [R=301,L]
+RewriteRule ^en/mix-and-mastering/?$ /en/mixing-and-mastering/ [R=301,L]
+RewriteRule ^en/mixing-mastering/?$ /en/mixing-and-mastering/ [R=301,L]
+RewriteRule ^en/mixing-and-mastering$ /en/mixing-and-mastering/ [R=301,L]
+RewriteRule ^en/?$ /en/mixing-and-mastering/ [R=302,L]
+</IfModule>

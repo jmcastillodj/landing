@@ -1,0 +1,6 @@
+node_modules/
+preview/
+reports/*.png
+reports/lh-*.json
+reports/lighthouse-*.json
+.DS_Store
