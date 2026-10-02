@@ -372,20 +372,14 @@ int main(int argc, char* argv[])
         if (id == "audio" || id == "from")
             continue;
 
-        // multi=0,1,5 puts those views on screen together (multi mode); side=1 puts them side by side
+        // multi=1:0,5:0,4:1 puts those views on screen together, each as view:row (multi mode)
         if (id == "multi")
         {
-            int mask = 0;
+            juce::StringArray rows { "-1", "-1", "-1", "-1", "-1", "-1" };
             for (auto& item : juce::StringArray::fromTokens(argument.fromFirstOccurrenceOf("=", false, false), ",", ""))
-                mask |= 1 << item.getIntValue();
+                rows.set(item.upToFirstOccurrenceOf(":", false, false).getIntValue(), item.fromFirstOccurrenceOf(":", false, false));
             processor.apvts.state.setProperty("multiEnabled", true, nullptr);
-            processor.apvts.state.setProperty("multiMask", mask, nullptr);
-            continue;
-        }
-
-        if (id == "side")
-        {
-            processor.apvts.state.setProperty("multiSideBySide", argument.fromFirstOccurrenceOf("=", false, false).getIntValue() != 0, nullptr);
+            processor.apvts.state.setProperty("multiRows", rows.joinIntoString(","), nullptr);
             continue;
         }
 

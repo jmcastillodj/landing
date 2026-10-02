@@ -25,6 +25,7 @@
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
 #include "Views/Timeline.h"
+#include "UI/MultiLayout.h"
 
 //==============================================================================
 class UltimateMeterAudioProcessorEditor  : public juce::AudioProcessorEditor
@@ -57,13 +58,18 @@ private:
     // Shows the view that the main view parameter selects
     void showMainView(int viewId);
 
-    // Several views on screen at once. In multi mode every view of multiMask is showing, side by side or
-    // one above the other, with a divider between each two that can be dragged. Only the choice of views
-    // and their arrangement are kept in the session; the sizes are what the window gives them when it opens.
+    // Several views on screen at once, in rows. Every view is given a row, or none, and the views of a row stand
+    // side by side. Between each two views of a row, and between each two rows, there is a divider to drag, so
+    // every view can be given any size. The assignment of views to rows is kept in the session; the sizes are
+    // what the window gives them when it opens.
     juce::Component* componentOfView(int viewId);
+    int multiMask() const;
     void setMultiMode(bool enabled);
     void toggleViewInMulti(int viewId);
-    void arrangeMulti(bool sideBySide);
+    void setViewRow(int viewId, int row);
+    void applyLayoutPreset(int preset);
+    void showLayoutMenu();
+    void closeUpRows();
     void refreshViews();
     void rebuildMultiLayout();
     void layoutViews();
@@ -88,7 +94,7 @@ private:
     UltimateMeterLookAndFeel lookAndFeel;
     TabBar tabs;
     TextButtonQuiet multiButton { "Multi" };
-    TextButtonQuiet arrangeButton { "Stacked" };
+    TextButtonQuiet arrangeButton { "Layout" };
 
 
     // The views, of which one is showing. The spectrum and the spectrogram draw the same spectra.
@@ -120,13 +126,15 @@ private:
     // Whether the constructor has finished, before which a change of size is not the user's
     bool isConstructed = false;
 
-    bool multiEnabled = false, multiSideBySide = false;
-    int multiMask = 0;           // one bit for each view, by the value of the main view parameter
+    static constexpr int maxRows = 4;
+    bool multiEnabled = false;
+    std::array<int, 6> viewRow { -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;
-    juce::StretchableLayoutManager multiLayout;
-    std::vector<std::unique_ptr<juce::StretchableLayoutResizerBar>> multiBars;
-    std::vector<juce::Component*> multiItems;
+    juce::StretchableLayoutManager rowLayout;
+    std::vector<std::unique_ptr<MultiRow>> multiRows;
+    std::vector<std::unique_ptr<juce::StretchableLayoutResizerBar>> rowDividers;
+    std::vector<juce::Component*> rowItems;
     int multiLayoutKey = -1;     // what the layout was last built for
 
     // Set by the reset button and the reset item of the menu, and cleared by the next update

@@ -9,6 +9,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <set>
 
 namespace
 {
@@ -16,8 +17,7 @@ namespace
     const juce::Identifier editorWidthProperty { "editorWidth" };
     const juce::Identifier editorHeightProperty { "editorHeight" };
     const juce::Identifier multiEnabledProperty { "multiEnabled" };
-    const juce::Identifier multiMaskProperty { "multiMask" };
-    const juce::Identifier multiSideBySideProperty { "multiSideBySide" };
+    const juce::Identifier multiRowsProperty { "multiRows" };
 }
 
 namespace
@@ -72,8 +72,8 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     multiButton.onClick = [this] { setMultiMode(multiButton.getToggleState()); };
 
     addChildComponent(arrangeButton);
-    arrangeButton.setTooltip("Stack the views, or put them side by side");
-    arrangeButton.onClick = [this] { arrangeMulti(!multiSideBySide); };
+    arrangeButton.setTooltip("Choose which views are showing and in which row");
+    arrangeButton.onClick = [this] { showLayoutMenu(); };
 
     addChildComponent(goniometerView);
     addChildComponent(spectrumView);
@@ -133,12 +133,15 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
 
     // The views of multi mode that were on screen when the session was saved
     multiEnabled = (bool)apvts.state.getProperty(multiEnabledProperty, false);
-    multiMask = (int)apvts.state.getProperty(multiMaskProperty, 0) & ((1 << (int)tabOrder.size()) - 1);
-    multiSideBySide = (bool)apvts.state.getProperty(multiSideBySideProperty, false);
-    if (multiMask == 0)
+    {
+        const auto rows = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowsProperty, "").toString(), ",", "");
+        for (int view = 0; view < (int)viewRow.size(); ++view)
+            viewRow[(size_t)view] = view < rows.size() ? juce::jlimit(-1, maxRows - 1, rows[view].getIntValue()) : -1;
+    }
+
+    if (multiMask() == 0)
         multiEnabled = false;
     multiButton.setToggleState(multiEnabled, juce::dontSendNotification);
-    arrangeButton.setButtonText(multiSideBySide ? "Side by side" : "Stacked");
 
     // Show the view that the parameter selects, now that the layout is known
     mainViewAttachment.sendInitialUpdate();
@@ -498,20 +501,46 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
     }
 }
 
+int UltimateMeterAudioProcessorEditor::multiMask() const
+{
+    int mask = 0;
+    for (int view = 0; view < (int)viewRow.size(); ++view)
+        if (viewRow[(size_t)view] >= 0)
+            mask |= 1 << view;
+    return mask;
+}
+
 void UltimateMeterAudioProcessorEditor::saveMultiState()
 {
     auto& state = audioProcessor.apvts.state;
     state.setProperty(multiEnabledProperty, multiEnabled, nullptr);
-    state.setProperty(multiMaskProperty, multiMask, nullptr);
-    state.setProperty(multiSideBySideProperty, multiSideBySide, nullptr);
+
+    juce::StringArray rows;
+    for (int row : viewRow)
+        rows.add(juce::String(row));
+    state.setProperty(multiRowsProperty, rows.joinIntoString(","), nullptr);
+}
+
+// The rows that are in use are numbered from the top without a gap, so that no row is empty
+void UltimateMeterAudioProcessorEditor::closeUpRows()
+{
+    std::set<int> used;
+    for (int row : viewRow)
+        if (row >= 0)
+            used.insert(row);
+
+    for (int& row : viewRow)
+        if (row >= 0)
+            row = (int)std::distance(used.begin(), used.find(row));
 }
 
 void UltimateMeterAudioProcessorEditor::setMultiMode(bool enabled)
 {
-    if (enabled && multiMask == 0)
+    if (enabled && multiMask() == 0)
     {
-        // The first time, the view that is open comes up with its natural companion
-        multiMask = (1 << currentMainView) | (1 << (currentMainView == Parameters::viewSpectrum ? Parameters::viewLoudness : Parameters::viewSpectrum));
+        // The first time, the view that is open comes up with its natural companion in a row of its own
+        viewRow[(size_t)currentMainView] = 0;
+        viewRow[(size_t)(currentMainView == Parameters::viewSpectrum ? Parameters::viewLoudness : Parameters::viewSpectrum)] = 1;
     }
 
     multiEnabled = enabled;
@@ -522,32 +551,96 @@ void UltimateMeterAudioProcessorEditor::setMultiMode(bool enabled)
 
 void UltimateMeterAudioProcessorEditor::toggleViewInMulti(int viewId)
 {
-    const int mask = multiMask ^ (1 << viewId);
+    auto& row = viewRow[(size_t)viewId];
 
-    // At least one view stays on
-    if (mask == 0)
-        return;
+    if (row >= 0)
+    {
+        // At least one view stays on
+        if (std::count_if(viewRow.begin(), viewRow.end(), [](int r) { return r >= 0; }) <= 1)
+            return;
 
-    multiMask = mask;
-    if ((mask & (1 << viewId)) != 0)
+        row = -1;
+    }
+    else
+    {
+        // A view that comes in gets a row of its own below the others, or joins the last row if there is no more room
+        row = juce::jmin(maxRows - 1, 1 + *std::max_element(viewRow.begin(), viewRow.end()));
         currentMainView = viewId;
+    }
 
+    closeUpRows();
     saveMultiState();
     refreshViews();
 }
 
-void UltimateMeterAudioProcessorEditor::arrangeMulti(bool sideBySide)
+void UltimateMeterAudioProcessorEditor::setViewRow(int viewId, int row)
 {
-    multiSideBySide = sideBySide;
-    arrangeButton.setButtonText(sideBySide ? "Side by side" : "Stacked");
-    resized();
+    // The last view cannot be taken away
+    if (row < 0 && std::count_if(viewRow.begin(), viewRow.end(), [](int r) { return r >= 0; }) <= 1 && viewRow[(size_t)viewId] >= 0)
+        return;
+
+    viewRow[(size_t)viewId] = row;
+    closeUpRows();
     saveMultiState();
     refreshViews();
+}
+
+// 0: one view to a row. 1: all the views in one row. 2: two views to a row.
+void UltimateMeterAudioProcessorEditor::applyLayoutPreset(int preset)
+{
+    int position = 0;
+    for (int viewId : tabOrder)
+    {
+        if (viewRow[(size_t)viewId] < 0)
+            continue;
+
+        viewRow[(size_t)viewId] = preset == 1 ? 0 : juce::jmin(maxRows - 1, preset == 2 ? position / 2 : position);
+        ++position;
+    }
+
+    closeUpRows();
+    saveMultiState();
+    refreshViews();
+}
+
+void UltimateMeterAudioProcessorEditor::showLayoutMenu()
+{
+    juce::PopupMenu menu;
+
+    menu.addSectionHeader("Arrange");
+    menu.addItem(1, "One view per row");
+    menu.addItem(2, "All in one row");
+    menu.addItem(3, "Two views per row");
+
+    menu.addSectionHeader("Views");
+    for (int viewId : tabOrder)
+    {
+        juce::PopupMenu rowMenu;
+        const int current = viewRow[(size_t)viewId];
+
+        rowMenu.addItem(1000 + viewId * 10, "Hidden", true, current < 0);
+        for (int row = 0; row < maxRows; ++row)
+            rowMenu.addItem(1000 + viewId * 10 + row + 1, "Row " + juce::String(row + 1), true, current == row);
+
+        menu.addSubMenu(Parameters::mainViewNames[viewId], rowMenu);
+    }
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&arrangeButton).withMinimumWidth(180),
+        [safe = juce::Component::SafePointer<UltimateMeterAudioProcessorEditor>(this)](int result)
+        {
+            if (safe == nullptr || result == 0)
+                return;
+
+            if (result < 1000)
+                safe->applyLayoutPreset(result - 1);
+            else
+                safe->setViewRow((result - 1000) / 10, (result - 1000) % 10 - 1);
+        });
 }
 
 void UltimateMeterAudioProcessorEditor::refreshViews()
 {
-    const int viewMask = multiEnabled ? multiMask : (1 << currentMainView);
+    const int viewMask = multiEnabled ? multiMask() : (1 << currentMainView);
 
     for (int viewId = 0; viewId < (int)tabOrder.size(); ++viewId)
         if (auto* view = componentOfView(viewId))
@@ -576,34 +669,55 @@ void UltimateMeterAudioProcessorEditor::refreshViews()
 
 void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
 {
-    multiBars.clear();
-    multiItems.clear();
-    multiLayout.clearAllItems();
+    // Every view comes back to the editor, so that no row takes one with it when it goes
+    for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+        if (auto* view = componentOfView(viewId))
+            addChildComponent(*view);
 
-    std::vector<juce::Component*> views;
-    for (int tab = 0; tab < (int)tabOrder.size(); ++tab)
-        if ((multiMask & (1 << tabOrder[(size_t)tab])) != 0)
-            views.push_back(componentOfView(tabOrder[(size_t)tab]));
+    rowDividers.clear();
+    multiRows.clear();
+    rowItems.clear();
+    rowLayout.clearAllItems();
 
-    constexpr int barThickness = 7;
-    const int minSize = multiSideBySide ? 180 : 90;
+    int numRows = 0;
+    for (int row : viewRow)
+        numRows = juce::jmax(numRows, row + 1);
+
+    constexpr int dividerThickness = 7;
+    constexpr int minRowHeight = 90;
     int index = 0;
 
-    for (size_t i = 0; i < views.size(); ++i)
+    for (int row = 0; row < numRows; ++row)
     {
-        // Every view starts with an equal share, and can be dragged to any share above its minimum
-        multiLayout.setItemLayout(index++, minSize, -1.0, -1.0 / (double)views.size());
-        multiItems.push_back(views[i]);
+        std::vector<juce::Component*> views;
+        for (int viewId : tabOrder)
+            if (viewRow[(size_t)viewId] == row)
+                views.push_back(componentOfView(viewId));
 
-        if (i + 1 < views.size())
+        if (views.empty())
+            continue;
+
+        if (!rowItems.empty())
         {
-            multiLayout.setItemLayout(index, barThickness, barThickness, barThickness);
-            multiBars.push_back(std::make_unique<juce::StretchableLayoutResizerBar>(&multiLayout, index, multiSideBySide));
-            addAndMakeVisible(*multiBars.back());
-            multiItems.push_back(multiBars.back().get());
+            rowLayout.setItemLayout(index, dividerThickness, dividerThickness, dividerThickness);
+            rowDividers.push_back(std::make_unique<juce::StretchableLayoutResizerBar>(&rowLayout, index, false));
+            addAndMakeVisible(*rowDividers.back());
+            rowItems.push_back(rowDividers.back().get());
             ++index;
         }
+
+        multiRows.push_back(std::make_unique<MultiRow>());
+        addAndMakeVisible(*multiRows.back());
+        multiRows.back()->setViews(views);
+
+        // Every row starts with an equal share, and can be dragged to any share above its minimum
+        rowLayout.setItemLayout(index++, minRowHeight, -1.0, -1.0 / (double)numRows);
+        rowItems.push_back(multiRows.back().get());
     }
+
+    // Keep the dividers on top of the rows
+    for (auto& divider : rowDividers)
+        divider->toFront(false);
 }
 
 void UltimateMeterAudioProcessorEditor::layoutViews()
@@ -613,8 +727,17 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
 
     if (!multiEnabled)
     {
-        multiBars.clear();
-        multiItems.clear();
+        if (!multiRows.empty() || !rowDividers.empty())
+        {
+            for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+                if (auto* view = componentOfView(viewId))
+                    addChildComponent(*view);
+
+            rowDividers.clear();
+            multiRows.clear();
+            rowItems.clear();
+        }
+
         multiLayoutKey = -1;
 
         if (auto* view = componentOfView(currentMainView))
@@ -622,17 +745,20 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
         return;
     }
 
-    // The layout is built again only when the views or their arrangement change, so that a dragged
+    // The layout is built again only when the views or their rows change, so that a dragged
     // divider keeps its place as the window is resized
-    const int key = multiMask | (multiSideBySide ? 1 << 16 : 0);
+    int key = 0;
+    for (int row : viewRow)
+        key = key * 5 + (row + 1);
+
     if (key != multiLayoutKey)
     {
         rebuildMultiLayout();
         multiLayoutKey = key;
     }
 
-    multiLayout.layOutComponents(multiItems.data(), (int)multiItems.size(), viewArea.getX(), viewArea.getY(), viewArea.getWidth(),
-                                 viewArea.getHeight(), !multiSideBySide, true);
+    rowLayout.layOutComponents(rowItems.data(), (int)rowItems.size(), viewArea.getX(), viewArea.getY(), viewArea.getWidth(),
+                               viewArea.getHeight(), true, true);
 }
 
 void UltimateMeterAudioProcessorEditor::resetMeasurements()
