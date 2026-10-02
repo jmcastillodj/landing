@@ -28,10 +28,27 @@ jobs:
         run: cmake --build build --config Release --parallel 4
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Sign (ad-hoc) and zip for macOS
+        if: runner.os == 'macOS'
+        run: |
+          cd build/UltimateMeter_artefacts/Release
+          for b in VST3/*.vst3 AU/*.component Standalone/*.app; do
+            codesign --force --deep --sign - "$b"
+            codesign --verify --deep --strict "$b"
+          done
+          mkdir -p ../../../dist
+          ditto -c -k --keepParent VST3 ../../../dist/UltimateMeter-VST3.zip
+          ditto -c -k --keepParent AU ../../../dist/UltimateMeter-AU.zip
+          ditto -c -k --keepParent Standalone ../../../dist/UltimateMeter-Standalone.zip
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: UltimateMeter-macOS
+          path: ultimate-meter/dist/*.zip
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'macOS'
         with:
           name: UltimateMeter-${{ matrix.name }}
           path: |
             ultimate-meter/build/UltimateMeter_artefacts/Release/VST3
-            ultimate-meter/build/UltimateMeter_artefacts/Release/AU
             ultimate-meter/build/UltimateMeter_artefacts/Release/Standalone
