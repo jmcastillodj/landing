@@ -108,19 +108,23 @@ juce::String WaveformView::formatSpan(float seconds)
 
 juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
 {
-    // The bands of music are not equally strong: the lows carry most of the power. Each is weighed so that
-    // a typical mix comes out white-ish and a sound with more of one band than usual takes its colour.
-    const float r = std::sqrt(juce::jmax(0.f, low)) * 0.6f;
-    const float g = std::sqrt(juce::jmax(0.f, mid));
-    const float b = std::sqrt(juce::jmax(0.f, high)) * 2.5f;
+    // The bands of music are not equally strong: the lows carry most of the power, so each is weighed to make up for it.
+    const float wl = std::sqrt(juce::jmax(0.f, low)) * 0.6f;
+    const float wm = std::sqrt(juce::jmax(0.f, mid));
+    const float wh = std::sqrt(juce::jmax(0.f, high)) * 2.5f;
 
-    const float top = juce::jmax(r, g, b);
-    if (top <= 1.0e-7f)
+    const float total = wl + wm + wh;
+    if (total <= 1.0e-7f)
         return Theme::textFaint;
 
-    // Normalise to the strongest band, then stretch the contrast so that the colours are clear
-    auto channel = [&](float v) { return std::pow(v / top, 1.6f); };
-    return juce::Colour::fromFloatRGBA(0.18f + 0.82f * channel(r), 0.18f + 0.82f * channel(g), 0.18f + 0.82f * channel(b), 1.f);
+    // Where the sound lies between the lows and the highs, from 0 to 1. A typical mix is in the lower half, so the range
+    // is stretched to make use of every colour.
+    const float centre = (wm * 0.5f + wh) / total;
+    const float position = juce::jlimit(0.f, 1.f, (centre - 0.15f) / 0.55f);
+
+    // Red and orange for the lows, through yellow and green for the mids, to blue for the highs
+    const float hue = 0.0f + position * 0.62f;
+    return juce::Colour::fromHSV(hue, 0.72f, 0.96f, 1.f);
 }
 
 void WaveformView::prepareFilters(double newSampleRate)
@@ -684,8 +688,8 @@ void WaveformView::paint(juce::Graphics& g)
                     default:
                         colour = colourOfBands(smoothLow[(size_t)b], smoothMid[(size_t)b], smoothHigh[(size_t)b]);
 
-                        // A peak at full scale turns the pixel red
-                        colour = colour.interpolatedWith(Theme::over, 0.85f * juce::jlimit(0.f, 1.f, (peak - 0.9f) / 0.08f));
+                        // Only a peak at full scale turns the pixel red
+                        colour = colour.interpolatedWith(Theme::over, 0.7f * juce::jlimit(0.f, 1.f, (peak - 0.985f) / 0.014f));
                         break;
                 }
 
