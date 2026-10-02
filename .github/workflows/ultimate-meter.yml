@@ -1,0 +1,37 @@
+name: ULTIMATE METER build
+
+on:
+  push:
+    paths: ['ultimate-meter/**', '.github/workflows/ultimate-meter.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest }
+          - { name: Windows, os: windows-latest }
+    defaults:
+      run:
+        working-directory: ultimate-meter
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get JUCE
+        run: git clone --depth 1 --branch 8.0.8 https://github.com/juce-framework/JUCE.git JUCE
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UltimateMeter-${{ matrix.name }}
+          path: |
+            ultimate-meter/build/UltimateMeter_artefacts/Release/VST3
+            ultimate-meter/build/UltimateMeter_artefacts/Release/AU
+            ultimate-meter/build/UltimateMeter_artefacts/Release/Standalone
