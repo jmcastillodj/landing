@@ -595,7 +595,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         spectrogramView.record(numNewSlots, hasNewSpectra, tilt, frozen);
 
         balanceView.setFine(getChoice(ID::balanceDetail) == 1);
-        balanceView.record(hasNewSpectra);
+        balanceView.record(hasNewSpectra, elapsedSeconds, valueAt(balanceAverageSeconds, getChoice(ID::balanceAverage)));
 
 
         if (spectrumView.isVisible())
@@ -1149,6 +1149,11 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
                 juce::PopupMenu detailMenu;
                 addChoiceItems(detailMenu, *apvts.getParameter(ID::balanceDetail));
                 menu.addSubMenu("Detail", detailMenu);
+            }
+            {
+                juce::PopupMenu averageMenu;
+                addChoiceItems(averageMenu, *apvts.getParameter(ID::balanceAverage));
+                menu.addSubMenu("Average over", averageMenu);
             }
             menu.addItem("Start the average again", [this] { balanceView.clearHistory(); });
             break;

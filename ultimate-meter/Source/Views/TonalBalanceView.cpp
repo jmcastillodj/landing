@@ -173,14 +173,20 @@ void TonalBalanceView::setFine(bool shouldBeFine)
 void TonalBalanceView::clearHistory()
 {
     std::fill(powerSum.begin(), powerSum.end(), 0.0);
-    frames = 0;
+    frames = 0.0;
+    pendingSeconds = 0.0;
     repaint();
 }
 
-void TonalBalanceView::record(bool hasNewSpectra)
+void TonalBalanceView::record(bool hasNewSpectra, float elapsedSeconds, float averageSeconds)
 {
+    pendingSeconds += (double)elapsedSeconds;
     if (!hasNewSpectra)
         return;
+
+    // With a span the older frames fade out, so that the balance follows the music instead of settling for good
+    const double decay = averageSeconds > 0.f ? std::exp(-pendingSeconds / (double)averageSeconds) : 1.0;
+    pendingSeconds = 0.0;
 
     source.getEngine().render(SpectrumEngine::Curve::mid, layout, source.getSampleRate(), rendered);
 
@@ -193,23 +199,33 @@ void TonalBalanceView::record(bool hasNewSpectra)
         return;
 
     for (size_t point = 0; point < rendered.size(); ++point)
-        powerSum[point] += std::pow(10.0, (double)juce::jmax(rendered[point], -150.f) / 10.0);
+        powerSum[point] = powerSum[point] * decay + std::pow(10.0, (double)juce::jmax(rendered[point], -150.f) / 10.0);
 
-    ++frames;
+    frames = frames * decay + 1.0;
 
-    // Only the picture of the last few frames' worth of change is worth a redraw
-    if (frames % 3 == 1)
+    if (++framesSincePaint >= 3)
+    {
+        framesSincePaint = 0;
         repaint();
+    }
 }
 
 std::vector<float> TonalBalanceView::measuredCurve() const
 {
     std::vector<float> curve(powerSum.size(), 0.f);
-    if (frames == 0)
+    if (frames <= 0.0)
         return curve;
 
     for (size_t point = 0; point < curve.size(); ++point)
-        curve[point] = (float)(10.0 * std::log10(powerSum[point] / (double)frames + 1.0e-15));
+        curve[point] = (float)(10.0 * std::log10(powerSum[point] / frames + 1.0e-15));
+
+    // A few passes of a small average smooth the line out, so that it follows the shape of the spectrum and not its ripple
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        auto previous = curve;
+        for (size_t point = 1; point + 1 < curve.size(); ++point)
+            curve[point] = 0.25f * previous[point - 1] + 0.5f * previous[point] + 0.25f * previous[point + 1];
+    }
 
     TonalTargets::removeAverage(curve);
     return curve;

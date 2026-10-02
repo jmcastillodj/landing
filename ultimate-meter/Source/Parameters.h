@@ -34,6 +34,7 @@ namespace Parameters
         inline const juce::String waveformTimecode { "waveformTimecode" };
         inline const juce::String summaryMode { "summaryMode" };
         inline const juce::String balanceDetail { "balanceDetail" };
+        inline const juce::String balanceAverage { "balanceAverage" };
         inline const juce::String radarSpeed { "radarSpeed" };
         inline const juce::String radarSource { "radarSource" };
         inline const juce::String spectrumStyle { "spectrumStyle" };
@@ -121,6 +122,10 @@ namespace Parameters
 
     // What the numbers in the side column are: the loudness, or the RMS levels
     inline const juce::StringArray balanceDetailNames { "Broad", "Fine" };
+    // How long the tonal balance remembers: the average moves with the music over this time, or covers everything since the reset
+    inline const juce::StringArray balanceAverageNames { "10 s", "30 s", "1 min", "Whole programme" };
+    inline constexpr std::array<float, 4> balanceAverageSeconds { 10.f, 30.f, 60.f, 0.f };
+
     // The radar of the loudness: the time one turn takes, and the reading that it draws
     inline const juce::StringArray radarSpeedNames { "30 s", "1 min", "2 min", "5 min" };
     inline constexpr std::array<float, 4> radarSpeedsSeconds { 30.f, 60.f, 120.f, 300.f };
@@ -254,6 +259,7 @@ namespace Parameters
             juce::NormalisableRange<float>(0.1f, 8.f, 0.1f), 1.f, juce::AudioParameterFloatAttributes().withAutomatable(false)));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpan, 2 }, "Waveform Span", waveformSpanNames, defaultWaveformSpan, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceDetail, 2 }, "Balance Detail", balanceDetailNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceAverage, 2 }, "Balance Average", balanceAverageNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSpeed, 2 }, "Radar Speed", radarSpeedNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSource, 2 }, "Radar Reading", radarSourceNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));

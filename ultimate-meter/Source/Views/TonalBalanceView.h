@@ -29,7 +29,8 @@ public:
     void resized() override;
 
     // Averages the source's newest spectrum into the picture, called by the editor once per frame
-    void record(bool hasNewSpectra);
+    // averageSeconds is how long the average remembers, or 0 for everything since the reset
+    void record(bool hasNewSpectra, float elapsedSeconds, float averageSeconds);
 
     // Starts the average again
     void clearHistory();
@@ -74,7 +75,9 @@ private:
 
     // The power at each point, added up over the frames, and how many frames there have been
     std::vector<double> powerSum;
-    int frames = 0;
+    double frames = 0.0; // the weight of the frames, which fades with time when the average has a span
+    double pendingSeconds = 0.0;
+    int framesSincePaint = 0;
     std::vector<float> rendered;
 
     std::vector<TonalTargets::Target> targets; // the built-in ones, then those of one's own
