@@ -55,26 +55,3 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LoudnessSummary)
 };
 
-//==============================================================================
-// The correlation of left and right as a bar from the center: to the right and blue when the
-// channels are in phase, to the left and red when they are out of phase. The bar is the slow
-// reading, and the line over it is the fast one.
-class CorrelationBar : public juce::Component
-{
-public:
-    CorrelationBar() { setOpaque(true); }
-
-    void paint(juce::Graphics& g) override;
-    void resized() override;
-
-    // Shows new readings, called by the editor once per frame
-    void update(float fastCorrelation, float slowCorrelation);
-
-private:
-    float xOf(float correlation) const;
-
-    float fast = 0.f, slow = 0.f;
-    juce::Rectangle<float> track;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CorrelationBar)
-};

@@ -11,6 +11,7 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Presets.h"
 #include "UI/Theme.h"
 #include "UI/LookAndFeel.h"
 #include "UI/Controls.h"
@@ -24,10 +25,12 @@
 #include "Views/TonalBalanceView.h"
 #include "Views/LoudnessView.h"
 #include "Views/LoudnessRadarView.h"
+#include "Views/StereoPanel.h"
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
 #include "Views/Timeline.h"
 #include "UI/MultiLayout.h"
+#include "UI/DragHandle.h"
 
 //==============================================================================
 class UltimateMeterAudioProcessorEditor  : public juce::AudioProcessorEditor
@@ -76,11 +79,29 @@ private:
     void rebuildMultiLayout();
     void layoutViews();
     void saveMultiState();
+    void readLayoutFromState();
+    void buildPresetsMenu(juce::PopupMenu& menu);
+    void askForPresetName();
+    void loadPresetFile(const juce::File& file);
 
     // The options of a view, which are in a menu: on the secondary click of the view, and under the Options button
     void buildViewMenu(juce::PopupMenu& menu, int viewId);
     void mouseDown(const juce::MouseEvent&) override;
     void captureSizes();
+
+    // Dragging a view by its grip to another place: beside another view in its row, or in a row of its own above or below
+    struct Drop
+    {
+        enum Kind { none, before, after, rowAbove, rowBelow };
+        Kind kind = none;
+        int targetView = -1;
+        juce::Rectangle<int> zone;
+    };
+
+    Drop dropAt(juce::Point<int> position, int draggedView) const;
+    void moveView(int viewId, const Drop& drop);
+    void updateHandles();
+    std::vector<int> viewsInRow(int row) const;
 
     // Draws the header and the bottom bar, whose raised parts meet the recessed ones in S-shaped shoulders
     void paintHeader(juce::Graphics& g, juce::Rectangle<int> area);
@@ -118,11 +139,12 @@ private:
     // The side column, which is always showing
     LevelMeters levelMeters;
     LoudnessSummary loudnessSummary;
-    CorrelationBar correlationBar;
+    StereoPanel stereoPanel;
 
     // The bottom bar
     SettingsButton meterSettingsButton { "Meters" };
     SettingsButton optionsButton { "Options" };
+    SettingsButton presetsButton { "Presets" };
 
     // Starts every measurement again. It is in the bar with every view, because the readings
     // that it clears are in the side column with every view.
@@ -153,6 +175,14 @@ private:
     // not undo the sizes that were dragged, and they are kept in the session.
     std::array<double, maxRows> rowWeight {};
     std::array<double, 8> viewWeight {};
+
+    // The place of a view among the views of its row, from the left. Only the order counts.
+    std::array<int, 8> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7 };
+
+    std::array<DragHandle, 8> dragHandles;
+    DropOverlay dropOverlay;
+    int draggedView = -1;
+    Drop currentDrop;
 
     // Set by the reset button and the reset item of the menu, and cleared by the next update
     bool resetTicksRequested = false;

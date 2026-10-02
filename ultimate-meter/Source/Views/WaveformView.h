@@ -62,6 +62,7 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
+    void mouseEnter(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     void clearHistory();
@@ -119,6 +120,7 @@ private:
     // Makes the bins of the picture, from the newest, and says where the newest one ends and how wide each is
     void buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan) const;
 
+    bool viewHovered = false;
     float wheelAccumulator = 0.f;
     juce::uint32 lastWheelStep = 0;
 

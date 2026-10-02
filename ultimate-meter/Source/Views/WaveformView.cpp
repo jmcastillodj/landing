@@ -456,8 +456,18 @@ void WaveformView::mouseMove(const juce::MouseEvent& e)
     }
 }
 
+void WaveformView::mouseEnter(const juce::MouseEvent&)
+{
+    // The lenses show only while the mouse is over the view
+    viewHovered = true;
+    repaint(controlArea(0).getUnion(controlArea(1)).expanded(2));
+}
+
 void WaveformView::mouseExit(const juce::MouseEvent&)
 {
+    viewHovered = false;
+    repaint(controlArea(0).getUnion(controlArea(1)).expanded(2));
+
     if (hoverControl >= 0)
     {
         hoverControl = -1;
@@ -793,7 +803,7 @@ void WaveformView::paint(juce::Graphics& g)
     }
 
     // The lenses: for the amplitude, and for the time
-    for (int control = 0; control < numControls; ++control)
+    for (int control = 0; control < numControls && viewHovered; ++control)
     {
         const auto area = controlArea(control);
         g.setColour(Theme::panel.withAlpha(0.88f));

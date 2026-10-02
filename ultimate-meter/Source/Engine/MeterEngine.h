@@ -21,6 +21,8 @@ class MeterEngine
 public:
     static constexpr double rmsWindowSeconds = 0.3;
     static constexpr double fastCorrelationSeconds = 0.05;
+    static constexpr double balanceSeconds = 0.5;
+    static constexpr double deviationSeconds = 3.0;
 
     struct Readings
     {
@@ -28,6 +30,9 @@ public:
         std::array<float, 2> rms { 0.f, 0.f };  // linear gain
         float correlationFast = 0.f;            // -1 to +1
         float correlationSlow = 0.f;            // -1 to +1
+        float balanceDb = 0.f;                  // right over left, in dB, over about half a second
+        float width = 0.f;                      // 0 for mono to 1 for a side as strong as the mid, over about half a second
+        float monoDeviationDb = 0.f;            // the mono sum against the stereo source, in dB, over 3 s
     };
 
     // Allocates the RMS window. Called from prepareToPlay(), never while
@@ -45,12 +50,19 @@ public:
 
         fast = {};
         slow = {};
+        balance = {};
+        deviation = {};
         fastCoefficient = coefficientFor(fastCorrelationSeconds);
+        balanceCoefficient = coefficientFor(balanceSeconds);
+        deviationCoefficient = coefficientFor(deviationSeconds);
 
         for (auto& value : peak) value.store(0.f, std::memory_order_relaxed);
         for (auto& value : rms) value.store(0.f, std::memory_order_relaxed);
         correlationFast.store(0.f, std::memory_order_relaxed);
         correlationSlow.store(0.f, std::memory_order_relaxed);
+        balanceDb.store(0.f, std::memory_order_relaxed);
+        width.store(0.f, std::memory_order_relaxed);
+        monoDeviationDb.store(0.f, std::memory_order_relaxed);
     }
 
     // Sets the integration time of the slow correlation reading. Safe to call
@@ -106,6 +118,8 @@ public:
 
             fast.update(l, r, fastCoefficient);
             slow.update(l, r, slowCoefficient);
+            balance.update(l, r, balanceCoefficient);
+            deviation.update(l, r, deviationCoefficient);
         }
 
         for (size_t channel = 0; channel < 2; ++channel)
@@ -118,6 +132,9 @@ public:
 
         correlationFast.store(fast.getCorrelation(), std::memory_order_relaxed);
         correlationSlow.store(slow.getCorrelation(), std::memory_order_relaxed);
+        balanceDb.store(balance.getBalanceDb(), std::memory_order_relaxed);
+        width.store(balance.getWidth(), std::memory_order_relaxed);
+        monoDeviationDb.store(deviation.getMonoDeviationDb(), std::memory_order_relaxed);
     }
 
     // Returns the latest readings and restarts the peak measurement. Called on
@@ -134,6 +151,9 @@ public:
 
         readings.correlationFast = correlationFast.load(std::memory_order_relaxed);
         readings.correlationSlow = correlationSlow.load(std::memory_order_relaxed);
+        readings.balanceDb = balanceDb.load(std::memory_order_relaxed);
+        readings.width = width.load(std::memory_order_relaxed);
+        readings.monoDeviationDb = monoDeviationDb.load(std::memory_order_relaxed);
         return readings;
     }
 
@@ -160,6 +180,39 @@ private:
             return static_cast<float>(std::clamp(lr / std::sqrt(energy), -1.0, 1.0));
         }
 
+        // How much louder the right channel is than the left, in dB
+        float getBalanceDb() const
+        {
+            if (ll + rr < 1.0e-12)
+                return 0.f;
+
+            return static_cast<float>(std::clamp(10.0 * std::log10((rr + 1.0e-12) / (ll + 1.0e-12)), -40.0, 40.0));
+        }
+
+        // The side against the mid and the side together, from 0 for mono to 1 when the side is as strong as the mid
+        float getWidth() const
+        {
+            const double mid = (ll + rr + 2.0 * lr) * 0.25;
+            const double side = std::max(0.0, (ll + rr - 2.0 * lr) * 0.25);
+            if (mid + side < 1.0e-12)
+                return 0.f;
+
+            const double m = std::sqrt(std::max(0.0, mid));
+            const double sd = std::sqrt(side);
+            return static_cast<float>(std::clamp(2.0 * sd / (m + sd), 0.0, 1.0));
+        }
+
+        // The mono sum, left plus right, against the stereo source: +3 dB for a mono signal, 0 for channels that
+        // have nothing in common, and far below for channels that cancel
+        float getMonoDeviationDb() const
+        {
+            if (ll + rr < 1.0e-12)
+                return 0.f;
+
+            const double sum = std::max(1.0e-6 * (ll + rr), ll + rr + 2.0 * lr);
+            return static_cast<float>(std::clamp(10.0 * std::log10(sum / (ll + rr)), -40.0, 10.0));
+        }
+
         double lr = 0.0, ll = 0.0, rr = 0.0;
     };
 
@@ -174,12 +227,13 @@ private:
     std::array<std::vector<float>, 2> squares;
     std::array<double, 2> sumOfSquares { 0.0, 0.0 };
     size_t windowIndex = 0;
-    CorrelationIntegrator fast, slow;
-    double fastCoefficient = 0.0;
+    CorrelationIntegrator fast, slow, balance, deviation;
+    double fastCoefficient = 0.0, balanceCoefficient = 0.0, deviationCoefficient = 0.0;
 
     // Shared between the threads
     std::atomic<float> slowSeconds { 0.1f };
     std::array<std::atomic<float>, 2> peak { 0.f, 0.f };
     std::array<std::atomic<float>, 2> rms { 0.f, 0.f };
     std::atomic<float> correlationFast { 0.f }, correlationSlow { 0.f };
+    std::atomic<float> balanceDb { 0.f }, width { 0.f }, monoDeviationDb { 0.f };
 };

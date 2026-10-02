@@ -20,6 +20,7 @@ namespace
     const juce::Identifier multiRowsProperty { "multiRows" };
     const juce::Identifier multiRowWeightsProperty { "multiRowWeights" };
     const juce::Identifier multiViewWeightsProperty { "multiViewWeights" };
+    const juce::Identifier multiSlotsProperty { "multiSlots" };
 }
 
 namespace
@@ -157,7 +158,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             parameter->endChangeGesture();
         }
     };
-    addAndMakeVisible(correlationBar);
+    addAndMakeVisible(stereoPanel);
 
     // The options of the views are in a menu, which opens on the secondary click of a view, and from this button
     addAndMakeVisible(optionsButton);
@@ -178,6 +179,46 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
                 menu.addSubMenu(Parameters::mainViewNames[viewId], viewMenu);
             }
     };
+
+    // The grips of the views in multi mode, to drag a view to another place
+    addChildComponent(dropOverlay);
+    for (int viewId = 0; viewId < (int)dragHandles.size(); ++viewId)
+    {
+        auto& handle = dragHandles[(size_t)viewId];
+        handle.setName(mainViewNames[viewId]);
+        addChildComponent(handle);
+
+        handle.onStart = [this, viewId]
+        {
+            captureSizes();
+            draggedView = viewId;
+            currentDrop = {};
+            dropOverlay.setBounds(getLocalBounds());
+            dropOverlay.show({}, {});
+            dropOverlay.setVisible(true);
+            dropOverlay.toFront(false);
+        };
+        handle.onMove = [this, viewId](juce::Point<int> position)
+        {
+            currentDrop = dropAt(position, viewId);
+            const char* labels[] { "", "Place it before this view", "Place it after this view", "A row of its own above", "A row of its own below" };
+            dropOverlay.show(currentDrop.zone, labels[(int)currentDrop.kind]);
+        };
+        handle.onEnd = [this, viewId](juce::Point<int> position)
+        {
+            const auto drop = dropAt(position, viewId);
+            dropOverlay.show({}, {});
+            dropOverlay.setVisible(false);
+            draggedView = -1;
+
+            if (drop.kind != Drop::none)
+                moveView(viewId, drop);
+        };
+    }
+
+    // The presets: the settings and the layout, kept as files, and one of them as the default of new instances
+    addAndMakeVisible(presetsButton);
+    presetsButton.buildMenu = [this](juce::PopupMenu& menu) { buildPresetsMenu(menu); };
 
     for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView })
         view->addMouseListener(this, true);
@@ -202,25 +243,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     isConstructed = true;
 
     // The views of multi mode that were on screen when the session was saved
-    multiEnabled = (bool)apvts.state.getProperty(multiEnabledProperty, false);
-    {
-        const auto rows = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowsProperty, "").toString(), ",", "");
-        for (int view = 0; view < (int)viewRow.size(); ++view)
-            viewRow[(size_t)view] = view < rows.size() ? juce::jlimit(-1, maxRows - 1, rows[view].getIntValue()) : -1;
-    }
-
-    {
-        const auto rowWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowWeightsProperty, "").toString(), ",", "");
-        const auto viewWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiViewWeightsProperty, "").toString(), ",", "");
-        for (int i = 0; i < (int)rowWeight.size() && i < rowWeights.size(); ++i)
-            rowWeight[(size_t)i] = rowWeights[i].getDoubleValue();
-        for (int i = 0; i < (int)viewWeight.size() && i < viewWeights.size(); ++i)
-            viewWeight[(size_t)i] = viewWeights[i].getDoubleValue();
-    }
-
-    if (multiMask() == 0)
-        multiEnabled = false;
-    multiButton.setToggleState(multiEnabled, juce::dontSendNotification);
+    readLayoutFromState();
 
     // Show the view that the parameter selects, now that the layout is known
     mainViewAttachment.sendInitialUpdate();
@@ -348,7 +371,7 @@ void UltimateMeterAudioProcessorEditor::paintBottomBar(juce::Graphics& g, juce::
 
     // The bar is raised along its whole length, except for a dip between the controls of the view
     // and the settings of the meters, if the window is wide enough to leave room for one
-    const float dipLeft = (float)optionsButton.getRight() + 24.f;
+    const float dipLeft = (float)presetsButton.getRight() + 24.f;
     const float dipRight = (float)resetButton.getX() - 12.f;
     const bool hasDip = dipRight - dipLeft > 2.f * shoulderWidth + 20.f;
     const float rim = bounds.getBottom() - rimThickness;
@@ -393,6 +416,7 @@ void UltimateMeterAudioProcessorEditor::resized()
     meterSettingsButton.setBounds(bottomBar.removeFromRight(meterSettingsButton.getIdealWidth()));
     resetButton.setBounds(bottomBar.removeFromRight(resetButton.getIdealWidth()));
     optionsButton.setBounds(bottomBar.removeFromLeft(optionsButton.getIdealWidth() + 8).withTrimmedLeft(8));
+    presetsButton.setBounds(bottomBar.removeFromLeft(presetsButton.getIdealWidth() + 4));
 
     // The side column, from the bottom up: the correlation, the loudness, and the bars in what is left
     bounds.removeFromTop(Theme::gap);
@@ -400,7 +424,13 @@ void UltimateMeterAudioProcessorEditor::resized()
     auto side = bounds.removeFromRight(Theme::sideColumnWidth);
     bounds.removeFromRight(Theme::gap);
 
-    correlationBar.setBounds(side.removeFromBottom(58));
+    // The stereo panel takes all the room that it can without leaving the level meters too short
+    {
+        const int room = side.getHeight() - 132 - 2 * Theme::gap - 150;
+        const int stereoHeight = room >= StereoPanel::fullHeight ? StereoPanel::fullHeight
+                               : room >= StereoPanel::barsHeight + 90 ? room : StereoPanel::barsHeight;
+        stereoPanel.setBounds(side.removeFromBottom(stereoHeight));
+    }
     side.removeFromBottom(Theme::gap);
     loudnessSummary.setBounds(side.removeFromBottom(132));
     side.removeFromBottom(Theme::gap);
@@ -471,6 +501,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     auto toDecibels = [](float gain) { return juce::Decibels::gainToDecibels(gain, -200.f); };
     const float target = valueAt(loudnessTargetsLufs, getChoice(ID::loudnessTarget));
 
+    updateHandles();
+
     // The side column
     LevelMeters::Levels levels;
     for (size_t channel = 0; channel < 2; ++channel)
@@ -493,7 +525,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     resetTicksRequested = false;
 
     levelMeters.update(levels, meterSettings, elapsedSeconds);
-    correlationBar.update(readings.correlationFast, readings.correlationSlow);
+    stereoPanel.update(readings.balanceDb, readings.width, readings.correlationSlow, readings.monoDeviationDb);
 
     const float truePeakDb = audioRunning ? toDecibels(juce::jmax(truePeak.peak[0], truePeak.peak[1])) : -200.f;
     const float maxTruePeakDb = toDecibels(juce::jmax(truePeak.maxPeak[0], truePeak.maxPeak[1]));
@@ -618,6 +650,40 @@ int UltimateMeterAudioProcessorEditor::multiMask() const
     return mask;
 }
 
+// Reads the multi mode layout from the saved state: which views are on, their rows, and their sizes
+void UltimateMeterAudioProcessorEditor::readLayoutFromState()
+{
+    auto& apvts = audioProcessor.apvts;
+    multiEnabled = (bool)apvts.state.getProperty(multiEnabledProperty, false);
+    viewRow.fill(-1);
+    rowWeight.fill(0.0);
+    viewWeight.fill(0.0);
+    {
+        const auto rows = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowsProperty, "").toString(), ",", "");
+        for (int view = 0; view < (int)viewRow.size(); ++view)
+            viewRow[(size_t)view] = view < rows.size() ? juce::jlimit(-1, maxRows - 1, rows[view].getIntValue()) : -1;
+    }
+
+    {
+        const auto rowWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowWeightsProperty, "").toString(), ",", "");
+        const auto viewWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiViewWeightsProperty, "").toString(), ",", "");
+        for (int i = 0; i < (int)rowWeight.size() && i < rowWeights.size(); ++i)
+            rowWeight[(size_t)i] = rowWeights[i].getDoubleValue();
+        for (int i = 0; i < (int)viewWeight.size() && i < viewWeights.size(); ++i)
+            viewWeight[(size_t)i] = viewWeights[i].getDoubleValue();
+    }
+
+    {
+        const auto slots = juce::StringArray::fromTokens(apvts.state.getProperty(multiSlotsProperty, "").toString(), ",", "");
+        for (int i = 0; i < (int)viewSlot.size(); ++i)
+            viewSlot[(size_t)i] = i < slots.size() ? slots[i].getIntValue() : i;
+    }
+
+    if (multiMask() == 0)
+        multiEnabled = false;
+    multiButton.setToggleState(multiEnabled, juce::dontSendNotification);
+}
+
 void UltimateMeterAudioProcessorEditor::saveMultiState()
 {
     auto& state = audioProcessor.apvts.state;
@@ -635,6 +701,11 @@ void UltimateMeterAudioProcessorEditor::saveMultiState()
         viewWeights.add(juce::String(weight, 4));
     state.setProperty(multiRowWeightsProperty, rowWeights.joinIntoString(","), nullptr);
     state.setProperty(multiViewWeightsProperty, viewWeights.joinIntoString(","), nullptr);
+
+    juce::StringArray slots;
+    for (int slot : viewSlot)
+        slots.add(juce::String(slot));
+    state.setProperty(multiSlotsProperty, slots.joinIntoString(","), nullptr);
 }
 
 // Reads the sizes that the layout has given, as shares
@@ -878,14 +949,13 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
         double known = 0.0;
         int unknown = 0;
 
-        for (int viewId : tabOrder)
-            if (viewRow[(size_t)viewId] == row)
-            {
-                views.push_back(componentOfView(viewId));
-                weights.push_back(viewWeight[(size_t)viewId]);
-                known += viewWeight[(size_t)viewId];
-                unknown += viewWeight[(size_t)viewId] > 0.0 ? 0 : 1;
-            }
+        for (int viewId : viewsInRow(row))
+        {
+            views.push_back(componentOfView(viewId));
+            weights.push_back(viewWeight[(size_t)viewId]);
+            known += viewWeight[(size_t)viewId];
+            unknown += viewWeight[(size_t)viewId] > 0.0 ? 0 : 1;
+        }
 
         if (views.empty())
             continue;
@@ -924,6 +994,10 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
     // Keep the dividers on top of the rows
     for (auto& divider : rowDividers)
         divider->toFront(false);
+
+    for (auto& handle : dragHandles)
+        handle.toFront(false);
+    dropOverlay.toFront(false);
 }
 
 void UltimateMeterAudioProcessorEditor::layoutViews()
@@ -949,14 +1023,15 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
 
         if (auto* view = componentOfView(currentMainView))
             view->setBounds(viewArea);
+        updateHandles();
         return;
     }
 
     // The layout is built again only when the views or their rows change, so that a dragged
     // divider keeps its place as the window is resized
     int key = 0;
-    for (int row : viewRow)
-        key = key * 5 + (row + 1);
+    for (size_t viewId = 0; viewId < viewRow.size(); ++viewId)
+        key = key * 31 + (viewRow[viewId] + 1) * 8 + viewSlot[viewId];
 
     if (key != multiLayoutKey)
     {
@@ -968,6 +1043,7 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
                                viewArea.getHeight(), true, true);
 
     captureSizes();
+    updateHandles();
 }
 
 void UltimateMeterAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
@@ -1165,4 +1241,238 @@ int UltimateMeterAudioProcessorEditor::getChoice(const juce::String& parameterID
 bool UltimateMeterAudioProcessorEditor::isOn(const juce::String& parameterID) const
 {
     return getValue(parameterID) > 0.5f;
+}
+
+//==============================================================================
+void UltimateMeterAudioProcessorEditor::buildPresetsMenu(juce::PopupMenu& menu)
+{
+    menu.addItem("Save as a new preset...", [this] { askForPresetName(); });
+
+    const auto names = Presets::names();
+    if (!names.isEmpty())
+    {
+        menu.addSeparator();
+        menu.addSectionHeader("Presets");
+        for (const auto& name : names)
+            menu.addItem(name, [this, name] { loadPresetFile(Presets::fileOf(name)); });
+    }
+
+    menu.addSeparator();
+    menu.addItem("Save the current settings as the default", [this]
+    {
+        captureSizes();
+        saveMultiState();
+        Presets::save(audioProcessor.apvts.state, Presets::defaultFile());
+    });
+    menu.addItem("Forget the default", Presets::defaultFile().existsAsFile(), false, [] { Presets::defaultFile().deleteFile(); });
+
+    if (!names.isEmpty())
+    {
+        juce::PopupMenu deleteMenu;
+        for (const auto& name : names)
+            deleteMenu.addItem(name, [name] { Presets::fileOf(name).deleteFile(); });
+        menu.addSubMenu("Delete a preset", deleteMenu);
+    }
+
+    menu.addItem("Show the presets folder", [] { Presets::folder().createDirectory(); Presets::folder().revealToUser(); });
+}
+
+void UltimateMeterAudioProcessorEditor::askForPresetName()
+{
+    auto* window = new juce::AlertWindow("Save preset", "Name of the preset", juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor("name", "", "");
+    window->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    window->setLookAndFeel(&lookAndFeel);
+
+    window->enterModalState(true, juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<UltimateMeterAudioProcessorEditor>(this), window](int result)
+    {
+        if (result != 1 || safe == nullptr)
+            return;
+
+        const auto name = window->getTextEditorContents("name").trim();
+        if (name.isEmpty())
+            return;
+
+        safe->captureSizes();
+        safe->saveMultiState();
+        Presets::save(safe->audioProcessor.apvts.state, Presets::fileOf(name));
+    }), true);
+}
+
+void UltimateMeterAudioProcessorEditor::loadPresetFile(const juce::File& file)
+{
+    if (!Presets::load(audioProcessor.apvts, file))
+        return;
+
+    // The parameters have moved the controls and the views by themselves, but the layout is read again
+    readLayoutFromState();
+    mainViewAttachment.sendInitialUpdate();
+    refreshViews();
+}
+
+//==============================================================================
+// The views of a row from the left
+std::vector<int> UltimateMeterAudioProcessorEditor::viewsInRow(int row) const
+{
+    std::vector<int> result;
+    for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+        if (viewRow[(size_t)viewId] == row)
+            result.push_back(viewId);
+
+    std::stable_sort(result.begin(), result.end(), [this](int a, int b) { return viewSlot[(size_t)a] < viewSlot[(size_t)b]; });
+    return result;
+}
+
+// The grips sit at the top of every view, when several views are showing
+void UltimateMeterAudioProcessorEditor::updateHandles()
+{
+    for (int viewId = 0; viewId < (int)dragHandles.size(); ++viewId)
+    {
+        auto& handle = dragHandles[(size_t)viewId];
+        auto* view = componentOfView(viewId);
+        const bool shown = multiEnabled && !multiRows.empty() && viewRow[(size_t)viewId] >= 0 && view != nullptr
+                           && view->getParentComponent() != nullptr && view->getParentComponent() != this;
+
+        if (!shown)
+        {
+            handle.setVisible(false);
+            continue;
+        }
+
+        const auto rect = getLocalArea(view->getParentComponent(), view->getBounds());
+        const int width = juce::jmin(handle.getIdealWidth(), rect.getWidth() - 16);
+        const auto bounds = juce::Rectangle<int>(width, 16).withCentre({ rect.getCentreX(), rect.getY() + 12 });
+
+        if (handle.getBounds() != bounds)
+            handle.setBounds(bounds);
+        handle.setVisible(width >= 40);
+    }
+}
+
+// Where a view that is dragged to a point would land: in the top fifth of another view, in a row above its row, in
+// the bottom fifth in a row below, and in the middle beside it, on its left half or its right half
+UltimateMeterAudioProcessorEditor::Drop UltimateMeterAudioProcessorEditor::dropAt(juce::Point<int> position, int dragged) const
+{
+    Drop drop;
+
+    for (int target = 0; target < (int)viewRow.size(); ++target)
+    {
+        auto* view = const_cast<UltimateMeterAudioProcessorEditor*>(this)->componentOfView(target);
+        if (viewRow[(size_t)target] < 0 || view == nullptr || view->getParentComponent() == nullptr || view->getParentComponent() == this)
+            continue;
+
+        const auto rect = getLocalArea(view->getParentComponent(), view->getBounds());
+        if (!rect.contains(position))
+            continue;
+
+        // The room of the whole row, for a band across it
+        juce::Rectangle<int> rowRect = rect;
+        for (size_t i = 0; i < multiRows.size(); ++i)
+            if (multiRowNumbers[i] == viewRow[(size_t)target])
+                rowRect = getLocalArea(multiRows[i].get(), multiRows[i]->getLocalBounds());
+
+        const float fy = (float)(position.y - rect.getY()) / (float)juce::jmax(1, rect.getHeight());
+        const bool alone = viewsInRow(viewRow[(size_t)dragged]).size() == 1;
+        const bool sameRow = viewRow[(size_t)target] == viewRow[(size_t)dragged];
+
+        drop.targetView = target;
+
+        if (fy < 0.2f)
+        {
+            if (!(alone && sameRow))
+            {
+                drop.kind = Drop::rowAbove;
+                drop.zone = rowRect.withHeight(juce::jmax(36, rowRect.getHeight() / 5));
+            }
+        }
+        else if (fy > 0.8f)
+        {
+            if (!(alone && sameRow))
+            {
+                drop.kind = Drop::rowBelow;
+                drop.zone = rowRect.withTrimmedTop(rowRect.getHeight() - juce::jmax(36, rowRect.getHeight() / 5));
+            }
+        }
+        else if (target != dragged)
+        {
+            const bool left = position.x < rect.getCentreX();
+            drop.kind = left ? Drop::before : Drop::after;
+            drop.zone = left ? rect.withWidth(rect.getWidth() / 2) : rect.withTrimmedLeft(rect.getWidth() / 2);
+        }
+
+        return drop;
+    }
+
+    return drop;
+}
+
+void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
+{
+    const int target = drop.targetView;
+    if (target < 0 || (target == viewId && (drop.kind == Drop::before || drop.kind == Drop::after)))
+        return;
+
+    captureSizes();
+
+    if (drop.kind == Drop::before || drop.kind == Drop::after)
+    {
+        const int row = viewRow[(size_t)target];
+        viewRow[(size_t)viewId] = row;
+
+        auto list = viewsInRow(row);
+        list.erase(std::remove(list.begin(), list.end(), viewId), list.end());
+        const auto at = std::find(list.begin(), list.end(), target);
+        list.insert(drop.kind == Drop::before ? at : at + 1, viewId);
+
+        // The views of the row share it equally again, as one has come in
+        for (int i = 0; i < (int)list.size(); ++i)
+        {
+            viewSlot[(size_t)list[(size_t)i]] = i;
+            viewWeight[(size_t)list[(size_t)i]] = 0.0;
+        }
+    }
+    else
+    {
+        // Out of its row first, which closes the row if it was alone in it
+        viewRow[(size_t)viewId] = -1;
+        closeUpRows();
+
+        int usedRows = 0;
+        for (int row : viewRow)
+            usedRows = juce::jmax(usedRows, row + 1);
+
+        if (usedRows >= maxRows)
+        {
+            // No row is left to open, so it goes in beside the view that it was dropped on
+            const int row = viewRow[(size_t)target];
+            viewRow[(size_t)viewId] = row;
+            auto list = viewsInRow(row);
+            list.erase(std::remove(list.begin(), list.end(), viewId), list.end());
+            list.push_back(viewId);
+            for (int i = 0; i < (int)list.size(); ++i)
+            {
+                viewSlot[(size_t)list[(size_t)i]] = i;
+                viewWeight[(size_t)list[(size_t)i]] = 0.0;
+            }
+        }
+        else
+        {
+            const int newRow = viewRow[(size_t)target] + (drop.kind == Drop::rowBelow ? 1 : 0);
+            for (int& row : viewRow)
+                if (row >= newRow)
+                    ++row;
+            for (int row = maxRows - 1; row > newRow; --row)
+                rowWeight[(size_t)row] = rowWeight[(size_t)row - 1];
+
+            rowWeight[(size_t)newRow] = 0.0;
+            viewRow[(size_t)viewId] = newRow;
+            viewSlot[(size_t)viewId] = 0;
+            viewWeight[(size_t)viewId] = 0.0;
+        }
+    }
+
+    closeUpRows();
+    saveMultiState();
+    refreshViews();
 }

@@ -8,6 +8,7 @@
 */
 
 #include "PluginProcessor.h"
+#include "Presets.h"
 #include "PluginEditor.h"
 
 //==============================================================================
@@ -29,6 +30,11 @@ UltimateMeterAudioProcessor::UltimateMeterAudioProcessor()
         Parameters::createLayout())
 {
     averagerDurationParameter = apvts.getRawParameterValue(Parameters::ID::averagerDuration);
+
+    // A new instance opens with the settings that were saved as the default, if any. A session that is
+    // being restored overwrites them afterwards, as the host sets its own state.
+    if (Presets::defaultFile().existsAsFile())
+        Presets::load(apvts, Presets::defaultFile());
 }
 
 UltimateMeterAudioProcessor::~UltimateMeterAudioProcessor()

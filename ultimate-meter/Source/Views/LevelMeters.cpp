@@ -264,8 +264,8 @@ void LevelMeters::paintStaticLayer(juce::Graphics& g)
     g.setColour(Theme::textDim);
     g.drawText("L", channelBars[0].toNearestInt().withY(names.getY()).withHeight(14), juce::Justification::centred);
     g.drawText("R", channelBars[1].toNearestInt().withY(names.getY()).withHeight(14), juce::Justification::centred);
-    g.drawText("M", momentaryBar.toNearestInt().withY(names.getY()).withHeight(14), juce::Justification::centred);
-    g.drawText("S", shortTermBar.toNearestInt().withY(names.getY()).withHeight(14), juce::Justification::centred);
+    g.drawText("MOM", momentaryBar.toNearestInt().expanded(8, 0).withY(names.getY()).withHeight(14), juce::Justification::centred);
+    g.drawText("ST", shortTermBar.toNearestInt().expanded(8, 0).withY(names.getY()).withHeight(14), juce::Justification::centred);
     g.setColour(Theme::textFaint);
     g.drawText("dB", scaleArea.toNearestInt().withY(names.getY()).withHeight(14), juce::Justification::centred);
 }
