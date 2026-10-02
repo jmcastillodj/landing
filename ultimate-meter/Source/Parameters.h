@@ -35,6 +35,7 @@ namespace Parameters
         inline const juce::String summaryMode { "summaryMode" };
         inline const juce::String balanceDetail { "balanceDetail" };
         inline const juce::String balanceAverage { "balanceAverage" };
+        inline const juce::String loudnessCustomTarget { "loudnessCustomTarget" };
         inline const juce::String radarSpeed { "radarSpeed" };
         inline const juce::String radarSource { "radarSource" };
         inline const juce::String spectrumStyle { "spectrumStyle" };
@@ -150,8 +151,10 @@ namespace Parameters
     inline constexpr std::array<int, 4> spectrumResolutionOrders { 11, 12, 13, 14 };
 
     // The loudness that common platforms and standards ask for. 0 stands for no target.
-    inline const juce::StringArray loudnessTargetNames { "Off", "-14 LUFS Streaming", "-16 LUFS Podcast", "-23 LUFS EBU R 128", "-24 LKFS ATSC A/85" };
-    inline constexpr std::array<float, 5> loudnessTargetsLufs { 0.f, -14.f, -16.f, -23.f, -24.f };
+    inline const juce::StringArray loudnessTargetNames { "Off", "-14 LUFS Streaming", "-16 LUFS Podcast", "-23 LUFS EBU R 128", "-24 LKFS ATSC A/85", "Custom" };
+    inline constexpr std::array<float, 6> loudnessTargetsLufs { 0.f, -14.f, -16.f, -23.f, -24.f, -14.f };
+    inline constexpr int customTargetChoice = 5; // the target that the user typed in, kept in loudnessCustomTarget
+    inline constexpr float minCustomTarget = -50.f, maxCustomTarget = -1.f;
 
     // How much time the spectrogram, the history and the loudness show. They share one timeline.
     inline const juce::StringArray timeSpanNames { "15 s", "30 s", "60 s" };
@@ -274,6 +277,8 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumTilt, 2 }, "Spectrum Tilt", spectrumTiltNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumSmoothing, 2 }, "Spectrum Smoothing", spectrumSmoothingNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumResolution, 2 }, "Spectrum Resolution", spectrumResolutionNames, 1, display));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { ID::loudnessCustomTarget, 2 }, "Custom Loudness Target",
+                                                               juce::NormalisableRange<float>(minCustomTarget, maxCustomTarget, 0.1f), -14.f));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::loudnessTarget, 2 }, "Loudness Target", loudnessTargetNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::refreshRate, 2 }, "Refresh Rate", refreshRateNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::timeSpan, 2 }, "Time Span", timeSpanNames, 1, display));

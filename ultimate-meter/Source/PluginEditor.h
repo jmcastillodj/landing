@@ -83,6 +83,9 @@ private:
     void readLayoutFromState();
     void buildPresetsMenu(juce::PopupMenu& menu);
     void askForPresetName();
+    void fillTargetItems(juce::PopupMenu& menu);
+    void askForCustomTarget();
+    float currentTargetLufs() const;
     void loadPresetFile(const juce::File& file);
 
     // The options of a view, which are in a menu: on the secondary click of the view, and under the Options button

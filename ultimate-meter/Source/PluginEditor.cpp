@@ -145,7 +145,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     {
         juce::PopupMenu menu;
         menu.addSectionHeader("Loudness target");
-        addChoiceItems(menu, *audioProcessor.apvts.getParameter(Parameters::ID::loudnessTarget));
+        fillTargetItems(menu);
         menu.setLookAndFeel(&lookAndFeel);
         menu.showMenuAsync(juce::PopupMenu::Options());
     };
@@ -501,7 +501,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     }
 
     auto toDecibels = [](float gain) { return juce::Decibels::gainToDecibels(gain, -200.f); };
-    const float target = valueAt(loudnessTargetsLufs, getChoice(ID::loudnessTarget));
+    const float target = currentTargetLufs();
 
     updateHandles();
 
@@ -1176,14 +1176,22 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             break;
 
         case viewLoudness:
-            addChoice("Target", ID::loudnessTarget);
+            {
+                juce::PopupMenu targetMenu;
+                fillTargetItems(targetMenu);
+                menu.addSubMenu("Target", targetMenu);
+            }
             addChoice("Time span", ID::timeSpan);
             break;
 
         case viewLoudnessRound:
             addChoice("Reading", ID::radarSource);
             addChoice("Turn takes", ID::radarSpeed);
-            addChoice("Target", ID::loudnessTarget);
+            {
+                juce::PopupMenu targetMenu;
+                fillTargetItems(targetMenu);
+                menu.addSubMenu("Target", targetMenu);
+            }
             menu.addItem("Clear the radar", [this] { radarView.clearHistory(); });
             break;
 
@@ -1506,4 +1514,73 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
     closeUpRows();
     saveMultiState();
     refreshViews();
+}
+
+//==============================================================================
+// The loudness to aim for: one of the standards, or the number that was typed in
+float UltimateMeterAudioProcessorEditor::currentTargetLufs() const
+{
+    const int choice = getChoice(Parameters::ID::loudnessTarget);
+    if (choice == Parameters::customTargetChoice)
+        return getValue(Parameters::ID::loudnessCustomTarget);
+
+    return Parameters::valueAt(Parameters::loudnessTargetsLufs, choice);
+}
+
+void UltimateMeterAudioProcessorEditor::fillTargetItems(juce::PopupMenu& menu)
+{
+    using namespace Parameters;
+    auto& apvts = audioProcessor.apvts;
+    const int current = getChoice(ID::loudnessTarget);
+
+    for (int choice = 0; choice < customTargetChoice; ++choice)
+        menu.addItem(loudnessTargetNames[choice], true, current == choice, [&apvts, choice]
+        {
+            auto* parameter = apvts.getParameter(ID::loudnessTarget);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)choice));
+            parameter->endChangeGesture();
+        });
+
+    menu.addSeparator();
+    const auto custom = juce::String(getValue(ID::loudnessCustomTarget), 1).replace("-", juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")));
+    menu.addItem("Custom: " + custom + " LUFS...", true, current == customTargetChoice, [this] { askForCustomTarget(); });
+}
+
+void UltimateMeterAudioProcessorEditor::askForCustomTarget()
+{
+    using namespace Parameters;
+
+    auto* window = new juce::AlertWindow("Custom loudness target", "The loudness to aim for, in LUFS (for example -8, or -9.5)", juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor("lufs", juce::String(getValue(ID::loudnessCustomTarget), 1), "LUFS");
+    window->addButton("Set", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    window->setLookAndFeel(&lookAndFeel);
+
+    window->enterModalState(true, juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<UltimateMeterAudioProcessorEditor>(this), window](int result)
+    {
+        if (result != 1 || safe == nullptr)
+            return;
+
+        // A comma is taken for a decimal point, and whatever is not a number is ignored
+        auto text = window->getTextEditorContents("lufs").replace(",", ".").retainCharacters("-0123456789.");
+        if (text.isEmpty() || !text.containsAnyOf("0123456789"))
+            return;
+
+        float value = text.getFloatValue();
+        if (value > 0.f)
+            value = -value; // 8 means -8
+        value = juce::jlimit(minCustomTarget, maxCustomTarget, std::round(value * 10.f) / 10.f);
+
+        auto& apvts = safe->audioProcessor.apvts;
+        auto* custom = apvts.getParameter(ID::loudnessCustomTarget);
+        custom->beginChangeGesture();
+        custom->setValueNotifyingHost(custom->convertTo0to1(value));
+        custom->endChangeGesture();
+
+        auto* choice = apvts.getParameter(ID::loudnessTarget);
+        choice->beginChangeGesture();
+        choice->setValueNotifyingHost(choice->convertTo0to1((float)customTargetChoice));
+        choice->endChangeGesture();
+    }), true);
 }
