@@ -189,12 +189,19 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
+    juce::int64 hostSample = -1;
+    bool hostPlaying = false;
     {
         double seconds = -1.0;
         if (auto* playHead = getPlayHead())
             if (auto position = playHead->getPosition())
+            {
                 if (auto time = position->getTimeInSeconds())
                     seconds = *time;
+                if (auto samples = position->getTimeInSamples())
+                    hostSample = *samples;
+                hostPlaying = position->getIsPlaying();
+            }
 
         hostTimeSeconds.store(seconds, std::memory_order_relaxed);
     }
@@ -216,7 +223,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     }
 
     // A reference track can be heard in place of the mix. The meters have measured the mix before this.
-    references.process(buffer, getSampleRate());
+    references.process(buffer, getSampleRate(), hostSample, hostPlaying);
 
 #if USE_OSC
     // Clear the audio buffer if oscillator synthesis is used

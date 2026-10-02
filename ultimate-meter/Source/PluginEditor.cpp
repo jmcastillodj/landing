@@ -611,7 +611,9 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         spectrogramView.record(numNewSlots, hasNewSpectra, tilt, frozen);
 
         balanceView.setFine(getChoice(ID::balanceDetail) == 1);
-        balanceView.record(hasNewSpectra, elapsedSeconds, valueAt(balanceAverageSeconds, getChoice(ID::balanceAverage)));
+        // Following the host, the mix is compared with the whole of the track, so the balance is the average of everything since the reset
+        const float averageSeconds = audioProcessor.references.mirror.load() ? 0.f : valueAt(balanceAverageSeconds, getChoice(ID::balanceAverage));
+        balanceView.record(hasNewSpectra, elapsedSeconds, averageSeconds);
 
 
         if (spectrumView.isVisible())
@@ -1201,6 +1203,16 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             menu.addSeparator();
             menu.addItem("Remove the selected reference", [this] { referenceView.removeSelected(); });
             menu.addItem("Loop the loudest part", [this] { referenceView.smartLoop(); });
+            menu.addItem("Mirror the DAW position", true, referenceView.isMirror(), [this] { referenceView.setMirror(!referenceView.isMirror()); });
+            {
+                juce::PopupMenu offsetMenu;
+                const double rate = audioProcessor.references.hostRate.load();
+                for (int ms : { -100, -10, -1, 1, 10, 100 })
+                    offsetMenu.addItem((ms > 0 ? "+" : "") + juce::String(ms) + " ms", [this, ms, rate] { referenceView.nudge((int)(rate * ms / 1000.0)); });
+                offsetMenu.addSeparator();
+                offsetMenu.addItem("No offset", [this] { referenceView.resetOffset(); });
+                menu.addSubMenu("Move the reference in time", offsetMenu);
+            }
             menu.addItem("Level match", true, referenceView.isLevelMatched(), [this] { referenceView.setLevelMatched(!referenceView.isLevelMatched()); });
             break;
 

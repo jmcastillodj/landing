@@ -3,6 +3,7 @@
 namespace
 {
     const juce::Identifier filesProperty { "referenceFiles" };
+    const juce::Identifier mirrorProperty { "referenceMirror" };
     constexpr float curveRangeDb = 6.f;
     constexpr float peakFloorDb = -36.f;
     constexpr float lufsFloor = -30.f;
@@ -19,6 +20,7 @@ ReferenceView::ReferenceView(ReferenceManager& m, juce::ValueTree& stateTree) : 
     setOpaque(true);
     selected = juce::jlimit(0, ReferenceManager::numSlots - 1, manager.activeSlot.load());
     manager.onChange = [this] { repaint(); };
+    manager.mirror.store((bool)state.getProperty(mirrorProperty, false));
     restoreFiles();
 }
 
@@ -49,6 +51,13 @@ void ReferenceView::saveFiles()
         paths.add(track != nullptr ? track->file.getFullPathName() : juce::String());
     }
     state.setProperty(filesProperty, paths.joinIntoString("|"), nullptr);
+}
+
+void ReferenceView::setMirror(bool shouldMirror)
+{
+    manager.mirror.store(shouldMirror);
+    state.setProperty(mirrorProperty, shouldMirror, nullptr);
+    repaint();
 }
 
 void ReferenceView::select(int slot)
@@ -97,7 +106,7 @@ void ReferenceView::update(const Mix& newMix, float)
     auto track = manager.getTrack(selected);
     float wanted = 0.f;
     if (track != nullptr && levelMatch && mix.integratedLufs > -100.f)
-        wanted = juce::jlimit(-24.f, 24.f, mix.integratedLufs - track->lufs);
+        wanted = juce::jlimit(-24.f, 24.f, mix.integratedLufs - track->lufsAt(manager.playPosition.load(), manager.mirror.load()));
     else if (track != nullptr && levelMatch)
         wanted = gainDb;
 
@@ -117,11 +126,15 @@ void ReferenceView::computeMatch()
     matchPercent = -1.f;
 
     auto track = manager.getTrack(selected);
-    if (track == nullptr || mix.curve.size() != track->tonal.centre.size() || mix.curve.empty())
+    if (track == nullptr)
+        return;
+
+    const auto& measure = track->measureFor(manager.mirror.load());
+    if (mix.curve.size() != measure.tonal.centre.size() || mix.curve.empty())
         return;
 
     // The mix has been smoothed more than the track was when it was measured, so the track is brought to the same smoothness
-    auto referenceCurve = track->tonal.centre;
+    auto referenceCurve = measure.tonal.centre;
     for (int pass = 0; pass < 4; ++pass)
     {
         auto previous = referenceCurve;
@@ -155,8 +168,8 @@ void ReferenceView::computeMatch()
 
     const float rms = count > 0 ? (float)std::sqrt(sum / count) : 0.f;
     const float tone = 1.f / (1.f + (rms / 3.f) * (rms / 3.f));
-    const float width = 1.f - juce::jmin(1.f, std::abs(mix.width - track->width) / 0.5f);
-    const float dynamics = mix.plr > 0.f ? 1.f - juce::jmin(1.f, std::abs(mix.plr - track->plr) / 8.f) : 0.5f;
+    const float width = 1.f - juce::jmin(1.f, std::abs(mix.width - measure.width) / 0.5f);
+    const float dynamics = mix.plr > 0.f ? 1.f - juce::jmin(1.f, std::abs(mix.plr - measure.plr) / 8.f) : 0.5f;
 
     matchPercent = 100.f * (0.6f * tone + 0.2f * width + 0.2f * dynamics);
 }
@@ -177,7 +190,10 @@ void ReferenceView::resized()
     area.removeFromTop(8);
     curveArea = area;
 
-    levelMatchArea = tagsArea.removeFromRight(110).withSizeKeepingCentre(110, 20);
+    levelMatchArea = tagsArea.removeFromRight(120).withSizeKeepingCentre(120, 20);
+    tagsArea.removeFromRight(10);
+    freeArea = tagsArea.removeFromRight(56).withSizeKeepingCentre(56, 20);
+    mirrorArea = tagsArea.removeFromRight(64).withSizeKeepingCentre(64, 20);
 
     auto slots = slotsArea;
     const int cell = slots.getWidth() / ReferenceManager::numSlots;
@@ -221,8 +237,22 @@ void ReferenceView::paint(juce::Graphics& g)
     {
         g.setFont(Theme::font(13.f));
         g.setColour(track != nullptr ? Theme::text : Theme::textDim);
-        const auto words = track != nullptr ? track->tags.joinIntoString(",  ") : juce::String("Load a reference track to compare your mix with it");
+        const auto words = track != nullptr ? track->measureFor(manager.mirror.load()).tags.joinIntoString(",  ") : juce::String("Load a reference track to compare your mix with it");
         g.drawText(words, tagsArea, juce::Justification::centredLeft);
+
+        // Mirror follows the position of the host, free plays the loop of its own
+        auto drawMode = [&](juce::Rectangle<int> area, const juce::String& text, bool active)
+        {
+            g.setColour(active ? Theme::accentDeep : Theme::track);
+            g.fillRoundedRectangle(area.toFloat(), 4.f);
+            g.setColour(active ? Theme::accent : Theme::panelEdge);
+            g.drawRoundedRectangle(area.toFloat().reduced(0.5f), 4.f, 1.f);
+            g.setFont(Theme::labelFont());
+            g.setColour(active ? juce::Colours::white : Theme::textDim);
+            g.drawText(text, area, juce::Justification::centred);
+        };
+        drawMode(mirrorArea, "MIRROR", manager.mirror.load());
+        drawMode(freeArea, "FREE", !manager.mirror.load());
 
         const bool on = levelMatch;
         g.setColour(on ? Theme::accentDeep : Theme::track);
@@ -261,8 +291,9 @@ void ReferenceView::paint(juce::Graphics& g)
                 g.fillRect((float)(waveArea.getX() + x), top, 1.f, juce::jmax(1.f, bottom - top));
             }
 
-            const int start = dragging ? juce::jmin(dragFrom, dragTo) : track->regionStart.load();
-            const int end = dragging ? juce::jmax(dragFrom, dragTo) : track->regionEnd.load();
+            const bool mirrored = manager.mirror.load();
+            const int start = mirrored ? 0 : dragging ? juce::jmin(dragFrom, dragTo) : track->regionStart.load();
+            const int end = mirrored ? track->length() : dragging ? juce::jmax(dragFrom, dragTo) : track->regionEnd.load();
             const auto region = juce::Rectangle<float>(xOfSample(start, *track), (float)waveArea.getY(), xOfSample(end, *track) - xOfSample(start, *track), (float)waveArea.getHeight());
 
             // The part that loops is brighter, over the dim wave
@@ -293,7 +324,9 @@ void ReferenceView::paint(juce::Graphics& g)
             g.setFont(Theme::font(10.5f));
             g.setColour(Theme::textDim);
             const auto seconds = (double)(end - start) / track->sampleRate;
-            g.drawText("LOOP " + juce::String(seconds, 1) + " s  -  drag to choose, double click for the loudest part",
+            const auto offsetMs = (double)manager.mirrorOffset.load() * 1000.0 / track->sampleRate;
+            g.drawText(mirrored ? "MIRROR  -  follows the position of the DAW, offset " + juce::String(offsetMs, 0) + " ms. Reset the meters at the start of the song to compare everything up to here."
+                                : "LOOP " + juce::String(seconds, 1) + " s  -  drag to choose, double click for the loudest part",
                        waveArea.reduced(6, 3), juce::Justification::bottomLeft);
         }
     }
@@ -361,8 +394,8 @@ void ReferenceView::paint(juce::Graphics& g)
         };
 
         const bool hasReference = track != nullptr;
-        drawBars(left, "PEAK", mix.peakDb, hasReference ? track->peakDb + gainDb : 0.f, peakFloorDb, 0.f, mix.peakDb > -150.f, hasReference);
-        drawBars(right, "INTEGRATED LUFS", mix.integratedLufs, hasReference ? track->lufs + gainDb : 0.f, lufsFloor, 0.f, mix.integratedLufs > -150.f, hasReference);
+        drawBars(left, "PEAK", mix.peakDb, hasReference ? track->peakAt(manager.playPosition.load(), manager.mirror.load()) + gainDb : 0.f, peakFloorDb, 0.f, mix.peakDb > -150.f, hasReference);
+        drawBars(right, "INTEGRATED LUFS", mix.integratedLufs, hasReference ? track->lufsAt(manager.playPosition.load(), manager.mirror.load()) + gainDb : 0.f, lufsFloor, 0.f, mix.integratedLufs > -150.f, hasReference);
 
         // The switch between the mix and the reference
         auto drawSide = [&](juce::Rectangle<int> area, const juce::String& text, bool active, bool second)
@@ -459,7 +492,7 @@ void ReferenceView::paint(juce::Graphics& g)
 void ReferenceView::mouseMove(const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
-    const bool hand = levelMatchArea.contains(p) || originalArea.contains(p) || referenceArea.contains(p) || slotsArea.contains(p) || waveArea.contains(p);
+    const bool hand = levelMatchArea.contains(p) || mirrorArea.contains(p) || freeArea.contains(p) || originalArea.contains(p) || referenceArea.contains(p) || slotsArea.contains(p) || waveArea.contains(p);
     setMouseCursor(hand ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
@@ -476,6 +509,12 @@ void ReferenceView::mouseDown(const juce::MouseEvent& e)
         if (!levelMatch)
             gainDb = 0.f;
         repaint();
+        return;
+    }
+
+    if (mirrorArea.contains(p) || freeArea.contains(p))
+    {
+        setMirror(mirrorArea.contains(p));
         return;
     }
 
@@ -526,6 +565,10 @@ void ReferenceView::mouseDown(const juce::MouseEvent& e)
             return;
         }
 
+        // The loop is for the free mode
+        if (manager.mirror.load())
+            return;
+
         dragging = true;
         dragFrom = dragTo = sampleAt((float)p.x, *track);
         repaint();
@@ -557,7 +600,7 @@ void ReferenceView::mouseUp(const juce::MouseEvent&)
 
 void ReferenceView::mouseDoubleClick(const juce::MouseEvent& e)
 {
-    if (waveArea.contains(e.getPosition()))
+    if (waveArea.contains(e.getPosition()) && !manager.mirror.load())
     {
         dragging = false;
         smartLoop();

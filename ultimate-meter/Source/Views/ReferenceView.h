@@ -42,6 +42,10 @@ public:
     bool isLevelMatched() const { return levelMatch; }
     void setLevelMatched(bool shouldMatch) { levelMatch = shouldMatch; repaint(); }
     int getSelected() const { return selected; }
+    void setMirror(bool shouldMirror);
+    bool isMirror() const { return manager.mirror.load(); }
+    void nudge(int samples) { manager.mirrorOffset.store(manager.mirrorOffset.load() + samples); repaint(); }
+    void resetOffset() { manager.mirrorOffset.store(0); repaint(); }
 
 private:
     void select(int slot);
@@ -68,7 +72,7 @@ private:
     std::vector<float> correction;
     float matchPercent = -1.f;
 
-    juce::Rectangle<int> tagsArea, waveArea, slotsArea, middleArea, curveArea, levelMatchArea, originalArea, referenceArea;
+    juce::Rectangle<int> tagsArea, waveArea, slotsArea, middleArea, curveArea, levelMatchArea, mirrorArea, freeArea, originalArea, referenceArea;
     std::array<juce::Rectangle<int>, ReferenceManager::numSlots> slotAreas, removeAreas;
 
     std::unique_ptr<juce::FileChooser> chooser;

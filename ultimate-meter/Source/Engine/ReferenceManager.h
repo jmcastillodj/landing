@@ -38,13 +38,40 @@ public:
         // The part that loops, in samples. Read by the audio thread.
         std::atomic<int> regionStart { 0 }, regionEnd { 0 };
 
-        // What the part measures. Written on the message thread only.
-        float lufs = -70.f;   // integrated loudness
-        float peakDb = -100.f; // sample peak
-        float width = 0.f;    // 0 for mono to 1 for a side as strong as the mid
-        float plr = 0.f;      // peak to loudness ratio
-        TonalTargets::Target tonal;
-        juce::StringArray tags;
+        // What a part of the track measures
+        struct Measure
+        {
+            float lufs = -70.f;    // integrated loudness
+            float peakDb = -100.f; // sample peak
+            float width = 0.f;     // 0 for mono to 1 for a side as strong as the mid
+            float plr = 0.f;       // peak to loudness ratio
+            TonalTargets::Target tonal;
+            juce::StringArray tags;
+        };
+
+        // The part that loops, and the whole track. Written on the message thread only.
+        Measure region, whole;
+
+        // The integrated loudness and the peak of everything up to each second, which is what a mix that has played
+        // from the start has to be compared with when the track follows the host
+        std::vector<float> lufsUpTo, peakUpTo;
+
+        const Measure& measureFor(bool mirror) const { return mirror ? whole : region; }
+
+        float lufsAt(int sample, bool mirror) const
+        {
+            if (!mirror || lufsUpTo.empty())
+                return measureFor(mirror).lufs;
+            const auto second = (size_t)juce::jlimit(0, (int)lufsUpTo.size() - 1, (int)((double)sample / sampleRate));
+            return lufsUpTo[second] > -69.f ? lufsUpTo[second] : whole.lufs;
+        }
+
+        float peakAt(int sample, bool mirror) const
+        {
+            if (!mirror || peakUpTo.empty())
+                return measureFor(mirror).peakDb;
+            return peakUpTo[(size_t)juce::jlimit(0, (int)peakUpTo.size() - 1, (int)((double)sample / sampleRate))];
+        }
 
         int length() const { return audio.getNumSamples(); }
     };
@@ -69,6 +96,11 @@ public:
     std::atomic<int> activeSlot { 0 };
     std::atomic<float> gainDb { 0.f };
     std::atomic<int> playPosition { 0 };
+
+    // Mirror: the track plays at the position of the host, so that a rough mix of the same song stays alongside the mix.
+    // The offset moves it, in samples, to put the two in line.
+    std::atomic<bool> mirror { false };
+    std::atomic<int> mirrorOffset { 0 };
 
     //==============================================================================
     // Message thread
@@ -151,7 +183,7 @@ public:
 
     //==============================================================================
     // Audio thread: puts the track in place of the mix when it is being listened to, with a short fade between the two
-    void process(juce::AudioBuffer<float>& buffer, double rate)
+    void process(juce::AudioBuffer<float>& buffer, double rate, juce::int64 hostSample, bool hostPlaying)
     {
         const bool wanted = monitoring.load(std::memory_order_relaxed);
         const int slot = juce::jlimit(0, numSlots - 1, activeSlot.load(std::memory_order_relaxed));
@@ -184,9 +216,13 @@ public:
             right = track->audio.getReadPointer(1);
         }
 
+        const bool following = mirror.load(std::memory_order_relaxed);
         int position = playPosition.load(std::memory_order_relaxed);
-        if (position < start || position >= end)
+        if (!following && (position < start || position >= end))
             position = start;
+
+        // Following the host, the track is where the host is, moved by the offset, and silent where the host is not playing
+        const juce::int64 mirrorStart = hostSample + (juce::int64)mirrorOffset.load(std::memory_order_relaxed);
 
         const float step = (float)(1.0 / (0.02 * rate));
 
@@ -198,10 +234,23 @@ public:
             float referenceLeft = 0.f, referenceRight = 0.f;
             if (left != nullptr && fade > 0.f)
             {
-                referenceLeft = left[position];
-                referenceRight = right[position];
-                if (++position >= end)
-                    position = start;
+                if (following)
+                {
+                    const juce::int64 at = mirrorStart + i;
+                    position = (int)juce::jlimit<juce::int64>(0, length, at);
+                    if (hostPlaying && hostSample >= 0 && at >= 0 && at < length)
+                    {
+                        referenceLeft = left[at];
+                        referenceRight = right[at];
+                    }
+                }
+                else
+                {
+                    referenceLeft = left[position];
+                    referenceRight = right[position];
+                    if (++position >= end)
+                        position = start;
+                }
             }
 
             for (int channel = 0; channel < numChannels; ++channel)
@@ -287,6 +336,7 @@ private:
         makeThumbnail(*track);
         findLoudestRegion(*track);
         measureRegion(*track);
+        measureWhole(*track);
         return track;
     }
 
@@ -356,21 +406,27 @@ private:
         track.regionEnd.store(juce::jmin(length, start + window));
     }
 
-    // Measures the part that loops
+    // Measures the part that loops, and the whole track
     static void measureRegion(Track& track)
     {
-        const int start = track.regionStart.load();
-        const int end = track.regionEnd.load();
+        track.region = measure(track, track.regionStart.load(), track.regionEnd.load(), nullptr, nullptr);
+    }
+
+    static void measureWhole(Track& track)
+    {
+        track.whole = measure(track, 0, track.length(), &track.lufsUpTo, &track.peakUpTo);
+    }
+
+    // Measures a part of a track. For a whole track it also takes the loudness and the peak up to every second.
+    static Track::Measure measure(const Track& track, int start, int end, std::vector<float>* lufsTrail, std::vector<float>* peakTrail)
+    {
+        Track::Measure result;
         const int length = juce::jmax(0, end - start);
         if (length < 1024)
-            return;
+            return result;
 
-        juce::AudioBuffer<float> part(2, length);
-        part.copyFrom(0, 0, track.audio, 0, start, length);
-        part.copyFrom(1, 0, track.audio, 1, start, length);
-
-        const float* left = part.getReadPointer(0);
-        const float* right = part.getReadPointer(1);
+        const float* left = track.audio.getReadPointer(0) + start;
+        const float* right = track.audio.getReadPointer(1) + start;
 
         // Peak and width
         float peak = 0.f;
@@ -385,24 +441,50 @@ private:
         }
 
         const double mid = std::sqrt(midEnergy / length), side = std::sqrt(sideEnergy / length);
-        track.width = mid + side > 1.0e-9 ? (float)juce::jlimit(0.0, 1.0, 2.0 * side / (mid + side)) : 0.f;
-        track.peakDb = juce::Decibels::gainToDecibels(peak, -100.f);
+        result.width = mid + side > 1.0e-9 ? (float)juce::jlimit(0.0, 1.0, 2.0 * side / (mid + side)) : 0.f;
+        result.peakDb = juce::Decibels::gainToDecibels(peak, -100.f);
 
         // Loudness, with the filters that the meter uses
         {
             LoudnessMeter meter;
             meter.prepare(track.sampleRate);
             constexpr int chunk = 4096;
+            const int perSecond = juce::jmax(1, (int)track.sampleRate);
+            float runningPeak = 0.f;
+            int nextSecond = perSecond;
+
             for (int i = 0; i < length; i += chunk)
-                meter.process(left + i, right + i, juce::jmin(chunk, length - i));
+            {
+                const int n = juce::jmin(chunk, length - i);
+                meter.process(left + i, right + i, n);
+
+                if (lufsTrail != nullptr)
+                {
+                    for (int k = i; k < i + n; ++k)
+                        runningPeak = juce::jmax(runningPeak, std::abs(left[k]), std::abs(right[k]));
+
+                    while (i + n >= nextSecond)
+                    {
+                        const float integrated = meter.read().integrated;
+                        lufsTrail->push_back(std::isfinite(integrated) && integrated > -100.f ? integrated : -70.f);
+                        peakTrail->push_back(juce::Decibels::gainToDecibels(runningPeak, -100.f));
+                        nextSecond += perSecond;
+                    }
+                }
+            }
 
             const float integrated = meter.read().integrated;
-            track.lufs = std::isfinite(integrated) && integrated > -100.f ? integrated : -70.f;
+            result.lufs = std::isfinite(integrated) && integrated > -100.f ? integrated : -70.f;
         }
 
-        track.plr = track.peakDb - track.lufs;
-        track.tonal = TonalTargets::analyse(track.name, part, track.sampleRate);
-        track.tags = describe(track);
+        result.plr = result.peakDb - result.lufs;
+
+        juce::AudioBuffer<float> part(2, length);
+        part.copyFrom(0, 0, track.audio, 0, start, length);
+        part.copyFrom(1, 0, track.audio, 1, start, length);
+        result.tonal = TonalTargets::analyse(track.name, part, track.sampleRate);
+        result.tags = describe(result);
+        return result;
     }
 
     // The mean of a curve between two frequencies
@@ -423,7 +505,7 @@ private:
     }
 
     // A few words on the tone, the width, the dynamics and the loudness of a track
-    static juce::StringArray describe(const Track& track)
+    static juce::StringArray describe(const Track::Measure& track)
     {
         juce::StringArray words;
 
