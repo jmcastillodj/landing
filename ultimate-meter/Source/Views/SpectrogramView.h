@@ -32,6 +32,13 @@ public:
     void resized() override;
 
     void mouseMove(const juce::MouseEvent&) override;
+
+    // A right click (or a click with the control key) asks for the menu of colours
+    void mouseDown(const juce::MouseEvent&) override;
+    std::function<void()> onContextMenu;
+
+    // Chooses the colours, by the index of Parameters::spectrogramColourNames
+    void setPalette(int index);
     void mouseExit(const juce::MouseEvent&) override;
 
     // Forgets what has been recorded
@@ -80,6 +87,7 @@ private:
     SpectrumEngine::Display display;
     std::vector<float> spectrum;
     std::array<juce::Colour, 256> colourTable;
+    int paletteIndex = -1;
 
     // The height of the mouse, if it is over the plot
     std::optional<int> hoverY;

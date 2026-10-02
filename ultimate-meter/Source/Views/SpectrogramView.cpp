@@ -7,21 +7,63 @@ SpectrogramView::SpectrogramView(SpectrumSource& spectrumSource) : source(spectr
     display.numPoints = numRows;
     pending.fill(SpectrumEngine::silenceDb);
 
-    // Like the spectrum, the picture is dark, and what is loud is a light in it. What is quiet is a hint of the
-    // blue of the meters, and then the level rises through the amber of the signal to its yellow and on to a
-    // warm white, so that the lightness rises with the level all the way. The blue meets the amber while both
-    // are dark: a bright blue beside a bright yellow makes a grey green of everything between them.
+    setPalette(0);
+}
+
+void SpectrogramView::setPalette(int index)
+{
+    if (index == paletteIndex)
+        return;
+
+    paletteIndex = index;
+
     juce::ColourGradient gradient;
-    gradient.addColour(0.0, Theme::displayTop);
-    gradient.addColour(0.2, juce::Colour(0xff0a1626));
-    gradient.addColour(0.4, juce::Colour(0xff0e2c4d));
-    gradient.addColour(0.56, juce::Colour(0xff50381a));
-    gradient.addColour(0.74, juce::Colour(0xffbd7d20));
-    gradient.addColour(0.88, Theme::warn);
-    gradient.addColour(1.0, juce::Colour(0xfffff1c8));
+    auto stops = [&](std::initializer_list<std::pair<double, juce::uint32>> list)
+    {
+        for (auto& stop : list)
+            gradient.addColour(stop.first, juce::Colour(stop.second));
+    };
+
+    switch (index)
+    {
+        case 1: // Magma: black through purple and red to a pale yellow
+            stops({ { 0.0, 0xff000004 }, { 0.13, 0xff180f3e }, { 0.25, 0xff451077 }, { 0.38, 0xff721f81 }, { 0.5, 0xff9f2f7f },
+                    { 0.63, 0xffcd4071 }, { 0.75, 0xfff1605d }, { 0.88, 0xfffd9567 }, { 0.95, 0xfffeca8d }, { 1.0, 0xfffcfdbf } });
+            break;
+        case 2: // Viridis: purple through teal and green to yellow
+            stops({ { 0.0, 0xff440154 }, { 0.25, 0xff3b528b }, { 0.5, 0xff21908c }, { 0.75, 0xff5dc863 }, { 1.0, 0xfffde725 } });
+            break;
+        case 3: // Ice: black and navy, cyan, then white
+            stops({ { 0.0, 0xff02060c }, { 0.3, 0xff0b2a55 }, { 0.6, 0xff1f7fc4 }, { 0.85, 0xff7fe0ff }, { 1.0, 0xffffffff } });
+            break;
+        case 4: // Rainbow: the colours of a spectrum, as the spectrograms of audio editors have them
+            stops({ { 0.0, 0xff000000 }, { 0.12, 0xff1a0a5c }, { 0.28, 0xff1d3fd0 }, { 0.42, 0xff12b4c8 }, { 0.56, 0xff2fd26a },
+                    { 0.7, 0xffe8e03a }, { 0.84, 0xfff0772a }, { 0.94, 0xffe5301f }, { 1.0, 0xffffe0d8 } });
+            break;
+        case 5: // Grayscale
+            stops({ { 0.0, 0xff000000 }, { 1.0, 0xffffffff } });
+            break;
+        default:
+            // The picture is dark, and what is loud is a light in it. What is quiet is a hint of the blue of the
+            // meters, and then the level rises through the amber of the signal to its yellow and on to a warm white,
+            // so that the lightness rises with the level all the way. The blue meets the amber while both are dark:
+            // a bright blue beside a bright yellow makes a grey green of everything between them.
+            stops({ { 0.0, Theme::displayTop.getARGB() }, { 0.2, 0xff0a1626 }, { 0.4, 0xff0e2c4d }, { 0.56, 0xff50381a },
+                    { 0.74, 0xffbd7d20 }, { 0.88, Theme::warn.getARGB() }, { 1.0, 0xfffff1c8 } });
+            break;
+    }
 
     for (size_t i = 0; i < colourTable.size(); ++i)
         colourTable[i] = gradient.getColourAtPosition((double)i / (double)(colourTable.size() - 1));
+
+    rebuildImage();
+    repaint();
+}
+
+void SpectrogramView::mouseDown(const juce::MouseEvent& e)
+{
+    if ((e.mods.isPopupMenu() || e.mods.isCtrlDown()) && onContextMenu)
+        onContextMenu();
 }
 
 float SpectrogramView::yOf(double frequency) const

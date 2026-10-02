@@ -77,6 +77,9 @@ public:
     // Restarts the integrated loudness, the loudness range and the maximum true peak
     void resetLoudness();
 
+    // The position of the host's play head in seconds, or -1 if the host gives none. The editor shows it as a time code.
+    std::atomic<double> hostTimeSeconds { -1.0 };
+
     // Carries every sample to the goniometer and the spectrum analyzer
     SampleRingBuffer sampleRingBuffer;
 

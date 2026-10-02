@@ -30,17 +30,104 @@ void LoudnessSummary::update(const LoudnessMeter::Readings& readings, float maxT
     }
 }
 
+void LoudnessSummary::setMode(Mode newMode)
+{
+    if (newMode != mode)
+    {
+        mode = newMode;
+        repaint();
+    }
+}
+
+void LoudnessSummary::updateRms(float leftDb, float rightDb, float peakHoldDb, bool readoutDue)
+{
+    if (!readoutDue)
+        return;
+
+    const auto newLoudest = Theme::formatDb(juce::jmax(leftDb, rightDb), -100.f);
+    const auto newLeft = Theme::formatDb(leftDb, -100.f);
+    const auto newRight = Theme::formatDb(rightDb, -100.f);
+    const auto newPeak = Theme::formatDb(peakHoldDb, -100.f);
+    const bool newOver = peakHoldDb >= 0.f;
+
+    if (newLoudest != rmsLoudest || newLeft != rmsLeft || newRight != rmsRight || newPeak != peakHold || newOver != peakHoldIsOver)
+    {
+        rmsLoudest = newLoudest;
+        rmsLeft = newLeft;
+        rmsRight = newRight;
+        peakHold = newPeak;
+        peakHoldIsOver = newOver;
+
+        if (mode == Mode::rms)
+            repaint();
+    }
+}
+
 void LoudnessSummary::paint(juce::Graphics& g)
 {
     g.fillAll(Theme::displayBottom);
 
     auto bounds = getLocalBounds().reduced(14, 8);
 
+    if (mode == Mode::rms)
+    {
+        // The RMS levels: the louder channel large, the two channels and the highest peak in a table
+        auto top = bounds.removeFromTop(46);
+        titleArea = top.removeFromTop(13);
+        g.setFont(Theme::labelFont());
+        g.setColour(titleHovered ? juce::Colours::white : Theme::textDim);
+        g.drawText("RMS", titleArea, juce::Justification::centredLeft);
+        g.setColour(Theme::textFaint);
+        g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x87\x84")) + " LOUDNESS", titleArea, juce::Justification::centredRight);
+
+        auto numberRow = top;
+        g.setFont(Theme::font(30.f));
+        g.setColour(Theme::accent);
+        const int width = Theme::textWidth(Theme::font(30.f), rmsLoudest) + 6;
+        g.drawText(rmsLoudest, numberRow.removeFromLeft(width), juce::Justification::centredLeft);
+        g.setFont(Theme::labelFont());
+        g.setColour(Theme::textDim);
+        g.drawText("dBFS", numberRow.removeFromTop(numberRow.getHeight() / 2 + 4), juce::Justification::bottomLeft);
+
+        struct RmsRow { const char* name; const juce::String& value; const char* unit; bool warn; };
+        const RmsRow rmsRows[] {
+            { "RMS L", rmsLeft, "dBFS", false },
+            { "RMS R", rmsRight, "dBFS", false },
+            { "PEAK", peakHold, "dBFS", peakHoldIsOver },
+        };
+
+        bounds.removeFromTop(4);
+        const int height = bounds.getHeight() / (int)std::size(rmsRows);
+
+        for (auto& row : rmsRows)
+        {
+            auto line = bounds.removeFromTop(height);
+            const bool isPeak = &row == &rmsRows[2];
+            if (isPeak)
+                truePeakRow = line;
+
+            g.setFont(Theme::labelFont());
+            g.setColour(isPeak && truePeakHovered ? juce::Colours::white : Theme::textDim);
+            g.drawText(isPeak && truePeakHovered ? "RESET" : row.name, line.removeFromLeft(74), juce::Justification::centredLeft);
+            g.setColour(Theme::textFaint);
+            g.drawText(row.unit, line.removeFromRight(32), juce::Justification::centredLeft);
+
+            g.setFont(Theme::font(14.f));
+            g.setColour(row.warn ? Theme::over : Theme::text);
+            g.drawText(row.value, line.withTrimmedRight(6), juce::Justification::centredRight);
+        }
+
+        return;
+    }
+
     // The integrated loudness is the reading that a delivery is judged by, so it is the largest
     auto top = bounds.removeFromTop(46);
+    titleArea = top.removeFromTop(13);
     g.setFont(Theme::labelFont());
-    g.setColour(Theme::textDim);
-    g.drawText("INTEGRATED", top.removeFromTop(13), juce::Justification::centredLeft);
+    g.setColour(titleHovered ? juce::Colours::white : Theme::textDim);
+    g.drawText("INTEGRATED", titleArea, juce::Justification::centredLeft);
+    g.setColour(Theme::textFaint);
+    g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x87\x84")) + " RMS", titleArea, juce::Justification::centredRight);
 
     auto numberRow = top;
     g.setFont(Theme::font(30.f));
@@ -87,26 +174,31 @@ void LoudnessSummary::paint(juce::Graphics& g)
 
 void LoudnessSummary::mouseDown(const juce::MouseEvent& e)
 {
-    if (truePeakRow.contains(e.getPosition()) && onTruePeakClicked)
+    if (titleArea.contains(e.getPosition()) && onTitleClicked)
+        onTitleClicked();
+    else if (truePeakRow.contains(e.getPosition()) && onTruePeakClicked)
         onTruePeakClicked();
 }
 
 void LoudnessSummary::mouseMove(const juce::MouseEvent& e)
 {
     const bool over = truePeakRow.contains(e.getPosition());
-    if (over != truePeakHovered)
+    const bool overTitle = titleArea.contains(e.getPosition());
+    if (over != truePeakHovered || overTitle != titleHovered)
     {
         truePeakHovered = over;
-        setMouseCursor(over ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        titleHovered = overTitle;
+        setMouseCursor(over || overTitle ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
 
 void LoudnessSummary::mouseExit(const juce::MouseEvent&)
 {
-    if (truePeakHovered)
+    if (truePeakHovered || titleHovered)
     {
         truePeakHovered = false;
+        titleHovered = false;
         setMouseCursor(juce::MouseCursor::NormalCursor);
         repaint();
     }

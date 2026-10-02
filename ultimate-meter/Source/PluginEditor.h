@@ -129,6 +129,7 @@ private:
 
     static constexpr int maxRows = 4;
     bool multiEnabled = false;
+    float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
     std::array<int, 6> viewRow { -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;

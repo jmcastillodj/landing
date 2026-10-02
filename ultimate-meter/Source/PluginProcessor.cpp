@@ -182,6 +182,16 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
+    {
+        double seconds = -1.0;
+        if (auto* playHead = getPlayHead())
+            if (auto position = playHead->getPosition())
+                if (auto time = position->getTimeInSeconds())
+                    seconds = *time;
+
+        hostTimeSeconds.store(seconds, std::memory_order_relaxed);
+    }
+
     if (numChannels > 0 && numSamples > 0)
     {
         // The meters always analyze a stereo signal, a mono input feeds both sides

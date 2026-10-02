@@ -17,7 +17,17 @@ public:
 
     void paint(juce::Graphics& g) override;
 
-    // Clicking the true peak, which holds the highest value since the last reset, restarts it
+    // The numbers are the loudness, or the RMS levels. A click on the title asks for the other.
+    enum class Mode { loudness, rms };
+    void setMode(Mode newMode);
+    std::function<void()> onTitleClicked;
+
+    // Shows the RMS levels of the two channels and the highest sample peak since the last reset, in decibels. Like
+    // update(), only when a readout is due.
+    void updateRms(float leftDb, float rightDb, float peakHoldDb, bool readoutDue);
+
+    // Clicking the last row, which holds the highest value since the last reset (the true peak, or in RMS
+    // mode the sample peak), restarts it
     std::function<void()> onTruePeakClicked;
 
     void mouseDown(const juce::MouseEvent&) override;
@@ -30,10 +40,14 @@ public:
     void update(const LoudnessMeter::Readings& readings, float maxTruePeakDb, float targetLufs, bool readoutDue);
 
 private:
+    Mode mode = Mode::loudness;
+    juce::Rectangle<int> titleArea;
+    juce::String rmsLoudest, rmsLeft, rmsRight, peakHold;
+    bool peakHoldIsOver = false;
     juce::String integrated, difference, shortTerm, range, truePeak;
     bool truePeakIsOver = false;
     juce::Rectangle<int> truePeakRow;
-    bool truePeakHovered = false;
+    bool truePeakHovered = false, titleHovered = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LoudnessSummary)
 };

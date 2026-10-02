@@ -84,11 +84,51 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(waveformView);
     addChildComponent(loudnessView);
 
+    // A right click on the spectrogram asks for its colours
+    spectrogramView.onContextMenu = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader("Colours");
+        addChoiceItems(menu, *audioProcessor.apvts.getParameter(Parameters::ID::spectrogramColours));
+        menu.setLookAndFeel(&lookAndFeel);
+        menu.showMenuAsync(juce::PopupMenu::Options());
+    };
+
+    // The lens of the waveform steps the zoom through its choices
+    waveformView.onZoomStep = [this](int step)
+    {
+        if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::waveformZoom))
+        {
+            const int numChoices = (int)Parameters::waveformZoomNames.size();
+            const int next = juce::jlimit(0, numChoices - 1, getChoice(Parameters::ID::waveformZoom) + step);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)next));
+            parameter->endChangeGesture();
+        }
+    };
+
     addAndMakeVisible(levelMeters);
     addAndMakeVisible(loudnessSummary);
 
     // A click on the true peak starts it again, as the reading is the highest since the last reset
-    loudnessSummary.onTruePeakClicked = [this] { audioProcessor.truePeakDetector.requestReset(); };
+    loudnessSummary.onTruePeakClicked = [this]
+    {
+        if (getChoice(Parameters::ID::summaryMode) == 1)
+            heldPeakDb = -200.f;
+        else
+            audioProcessor.truePeakDetector.requestReset();
+    };
+
+    // A click on the title of the numbers changes them between the loudness and the RMS levels
+    loudnessSummary.onTitleClicked = [this]
+    {
+        if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::summaryMode))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(getChoice(Parameters::ID::summaryMode) == 1 ? 0.f : 1.f);
+            parameter->endChangeGesture();
+        }
+    };
     addAndMakeVisible(correlationBar);
 
     // The controls of the views, each of which shows with the views that it belongs to
@@ -106,6 +146,14 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
 
     // Freezing is for a moment's look, so it is not a setting that is saved
     freezeButton = &controlBar.addButton(ControlBar::views({ viewSpectrum, viewSpectrogram }), "Freeze", true, [] {});
+
+    controlBar.addMenu(ControlBar::views({ viewSpectrogram }), apvts, ID::spectrogramColours, "Colours:");
+
+    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformChannels, "Channels:");
+    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformColours, "Colours:");
+    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformMode, "Mode:");
+    controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformPeakHistory, "Peak history");
+    controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformTimecode, "Time code");
 
     controlBar.addMenu(ControlBar::views({ viewHistory }), apvts, ID::historyShow, "Show:");
 
@@ -437,6 +485,10 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
 
     loudnessSummary.update(loudness, maxTruePeakDb, target, readoutDue);
 
+    heldPeakDb = juce::jmax(heldPeakDb, juce::jmax(levels.peakDb[0], levels.peakDb[1]));
+    loudnessSummary.setMode(getChoice(ID::summaryMode) == 1 ? LoudnessSummary::Mode::rms : LoudnessSummary::Mode::loudness);
+    loudnessSummary.updateRms(levels.rmsDb[0], levels.rmsDb[1], heldPeakDb, readoutDue);
+
     // The spectrogram, the history and the loudness share one timeline. They all record in every
     // update, whichever view is showing, so that the same moment is in the same place in all of them.
     // While no audio arrives the clock stands still, and so do all three.
@@ -449,6 +501,20 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
 
     // The waveform is made of the samples themselves, which it reads whichever view is showing
     waveformView.update();
+
+    {
+        WaveformView::Settings waveformSettings;
+        waveformSettings.channels = getChoice(ID::waveformChannels);
+        waveformSettings.colours = getChoice(ID::waveformColours);
+        waveformSettings.sweep = getChoice(ID::waveformMode) == 1;
+        waveformSettings.zoom = valueAt(waveformZooms, getChoice(ID::waveformZoom));
+        waveformSettings.peakHistory = isOn(ID::waveformPeakHistory);
+        waveformSettings.timeCode = isOn(ID::waveformTimecode);
+        waveformSettings.hostSeconds = audioProcessor.hostTimeSeconds.load(std::memory_order_relaxed);
+        waveformView.setSettings(waveformSettings);
+    }
+
+    spectrogramView.setPalette(getChoice(ID::spectrogramColours));
     historyView.setShown(getChoice(ID::historyShow) != rmsMeters, getChoice(ID::historyShow) != peakMeters);
     spectrogramView.setSpan(timeSpan);
 
@@ -875,6 +941,7 @@ void UltimateMeterAudioProcessorEditor::resetMeasurements()
 
     spectrumView.resetPeakHold();
     resetTicksRequested = true;
+    heldPeakDb = -200.f;
 }
 
 void UltimateMeterAudioProcessorEditor::buildMeterSettingsMenu(juce::PopupMenu& menu)

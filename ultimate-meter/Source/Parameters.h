@@ -24,6 +24,17 @@ namespace Parameters
         inline const juce::String goniometerPersistence { "goniometerPersistence" };
         inline const juce::String spectrumChannels { "spectrumChannels" };
         inline const juce::String spectrumReference { "spectrumReference" };
+        inline const juce::String spectrogramColours { "spectrogramColours" };
+        inline const juce::String waveformChannels { "waveformChannels" };
+        inline const juce::String waveformColours { "waveformColours" };
+        inline const juce::String waveformMode { "waveformMode" };
+        inline const juce::String waveformZoom { "waveformZoom" };
+        inline const juce::String waveformPeakHistory { "waveformPeakHistory" };
+        inline const juce::String waveformTimecode { "waveformTimecode" };
+        inline const juce::String summaryMode { "summaryMode" };
+        inline const juce::String spectrumStyle { "spectrumStyle" };
+        inline const juce::String spectrumBars { "spectrumBars" };
+        inline const juce::String spectrumSpeed { "spectrumSpeed" };
         inline const juce::String spectrumTilt { "spectrumTilt" };
         inline const juce::String spectrumSmoothing { "spectrumSmoothing" };
         inline const juce::String spectrumResolution { "spectrumResolution" };
@@ -84,6 +95,29 @@ namespace Parameters
     inline const juce::StringArray spectrumReferenceNames { "Off", "Pink noise (-3 dB/oct)", "White noise (0 dB/oct)", "Brown noise (-6 dB/oct)", "Typical mix (-4.5 dB/oct)", "Blue noise (+3 dB/oct)" };
     inline const juce::StringArray spectrumReferenceShortNames { "", "PINK NOISE", "WHITE NOISE", "BROWN NOISE", "TYPICAL MIX", "BLUE NOISE" };
     inline constexpr std::array<float, 6> spectrumReferenceSlopesDbPerOctave { 0.f, -3.f, 0.f, -6.f, -4.5f, 3.f };
+
+    // The colours of the spectrogram, as gradients from silence to the loudest
+    inline const juce::StringArray spectrogramColourNames { "Studio", "Magma", "Viridis", "Ice", "Rainbow", "Grayscale" };
+
+    // What the waveform shows: both channels as one (the loudest of the two at every moment), one channel,
+    // or two channels in lanes of their own
+    inline const juce::StringArray waveformChannelNames { "Stereo", "Left", "Right", "Mid", "Side", "Left / Right", "Mid / Side" };
+    enum WaveformChannels { waveformStereo, waveformLeft, waveformRight, waveformMid, waveformSide, waveformLeftRight, waveformMidSide };
+    inline const juce::StringArray waveformColourNames { "Multi-band", "Static", "Color map" };
+    enum WaveformColours { colourMultiBand, colourStatic, colourMap };
+    inline const juce::StringArray waveformModeNames { "Scrolling", "Static sweep" };
+    inline const juce::StringArray waveformZoomNames { "0.5x", "1x", "2x", "4x", "8x", "16x" };
+    inline constexpr std::array<float, 6> waveformZooms { 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f };
+
+    // What the numbers in the side column are: the loudness, or the RMS levels
+    inline const juce::StringArray summaryModeNames { "Loudness", "RMS" };
+
+    // How the spectrum is drawn: as a curve, or as bars, whose number says how fine the analysis is
+    inline const juce::StringArray spectrumStyleNames { "Curve", "Bars" };
+    inline const juce::StringArray spectrumBarsNames { "16", "24", "31", "48", "64", "96" };
+    inline constexpr std::array<int, 6> spectrumBarCounts { 16, 24, 31, 48, 64, 96 };
+    inline const juce::StringArray spectrumSpeedNames { "Slow", "Medium", "Fast" };
+    inline constexpr std::array<float, 3> spectrumReleaseSeconds { 0.9f, 0.3f, 0.1f };
 
     inline const juce::StringArray spectrumTiltNames { "0 dB/oct", "3 dB/oct", "4.5 dB/oct", "6 dB/oct" };
     inline constexpr std::array<float, 4> spectrumTiltsDbPerOctave { 0.f, 3.f, 4.5f, 6.f };
@@ -197,6 +231,19 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::goniometerPersistence, 2 }, "Goniometer Persistence", goniometerPersistenceNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumChannels, 2 }, "Spectrum Channels", spectrumChannelsNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumReference, 2 }, "Spectrum Reference", spectrumReferenceNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrogramColours, 2 }, "Spectrogram Colours", spectrogramColourNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformChannels, 2 }, "Waveform Channels", waveformChannelNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformColours, 2 }, "Waveform Colours", waveformColourNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformMode, 2 }, "Waveform Mode", waveformModeNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformZoom, 2 }, "Waveform Zoom", waveformZoomNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumStyle, 2 }, "Spectrum Style", spectrumStyleNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumBars, 2 }, "Spectrum Bars", spectrumBarsNames, 2, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumSpeed, 2 }, "Spectrum Speed", spectrumSpeedNames, 1, display));
+        layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { ID::waveformPeakHistory, 2 }, "Waveform Peak History", false,
+            juce::AudioParameterBoolAttributes().withAutomatable(false)));
+        layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { ID::waveformTimecode, 2 }, "Waveform Time Code", false,
+            juce::AudioParameterBoolAttributes().withAutomatable(false)));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumTilt, 2 }, "Spectrum Tilt", spectrumTiltNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumSmoothing, 2 }, "Spectrum Smoothing", spectrumSmoothingNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumResolution, 2 }, "Spectrum Resolution", spectrumResolutionNames, 1, display));
