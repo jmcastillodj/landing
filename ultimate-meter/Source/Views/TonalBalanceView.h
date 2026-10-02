@@ -43,6 +43,9 @@ public:
     // Adds to a menu the items for choosing the target, making one from a recording, and removing one's own
     void addTargetItems(juce::PopupMenu& menu);
 
+    // The average so far, as a curve with its mean over 100 Hz to 10 kHz taken out. False while there is nothing yet.
+    bool getAverageCurve(std::vector<float>& curve) const { if (frames <= 0.0) return false; curve = measuredCurve(); return true; }
+
     // Clicking the view starts the average again
     void mouseDown(const juce::MouseEvent&) override;
 

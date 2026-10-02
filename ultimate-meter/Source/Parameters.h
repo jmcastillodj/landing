@@ -63,7 +63,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference" };
 
     enum MeterView
     {
@@ -81,7 +81,8 @@ namespace Parameters
         viewLoudness,
         viewWaveform, // added after the others, so that sessions saved before them keep their view
         viewBalance,
-        viewLoudnessRound
+        viewLoudnessRound,
+        viewReference
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };

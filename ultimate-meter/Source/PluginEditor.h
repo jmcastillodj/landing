@@ -26,6 +26,7 @@
 #include "Views/LoudnessView.h"
 #include "Views/LoudnessRadarView.h"
 #include "Views/StereoPanel.h"
+#include "Views/ReferenceView.h"
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
 #include "Views/Timeline.h"
@@ -43,7 +44,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int defaultWidth = 1100, defaultHeight = 580;
+    static constexpr int defaultWidth = 1200, defaultHeight = 580;
     static constexpr int minWidth = 860, minHeight = 480;
     static constexpr int maxWidth = 2600, maxHeight = 1600;
 
@@ -135,6 +136,8 @@ private:
     TonalBalanceView balanceView;
     LoudnessView loudnessView;
     LoudnessRadarView radarView;
+    ReferenceView referenceView;
+    float widthAverage = 0.f;
 
     // The side column, which is always showing
     LevelMeters levelMeters;
@@ -160,7 +163,7 @@ private:
     static constexpr int maxRows = 4;
     bool multiEnabled = false;
     float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
-    std::array<int, 8> viewRow { -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
+    std::array<int, 9> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;
     juce::StretchableLayoutManager rowLayout;
@@ -174,12 +177,12 @@ private:
     // They are read from the layout after every change, so that adding a view or taking one away does
     // not undo the sizes that were dragged, and they are kept in the session.
     std::array<double, maxRows> rowWeight {};
-    std::array<double, 8> viewWeight {};
+    std::array<double, 9> viewWeight {};
 
     // The place of a view among the views of its row, from the left. Only the order counts.
-    std::array<int, 8> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7 };
+    std::array<int, 9> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
 
-    std::array<DragHandle, 8> dragHandles;
+    std::array<DragHandle, 9> dragHandles;
     DropOverlay dropOverlay;
     int draggedView = -1;
     Drop currentDrop;

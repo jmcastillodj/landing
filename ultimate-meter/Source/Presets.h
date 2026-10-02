@@ -29,7 +29,7 @@ namespace Presets
     // What belongs to the window or to the user's own files rather than to the look of the meter
     inline bool isLeftOut(const juce::Identifier& property)
     {
-        static const juce::StringArray leftOut { "editorWidth", "editorHeight", "tonalCustomTargets", "stateVersion" };
+        static const juce::StringArray leftOut { "editorWidth", "editorHeight", "tonalCustomTargets", "referenceFiles", "stateVersion" };
         return leftOut.contains(property.toString());
     }
 

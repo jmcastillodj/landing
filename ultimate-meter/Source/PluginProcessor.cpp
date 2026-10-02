@@ -109,6 +109,7 @@ void UltimateMeterAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     // Use this method as the place to do any pre-playback initialization
     juce::ignoreUnused(samplesPerBlock);
 
+    references.hostRate.store(sampleRate);
     meterEngine.prepare(sampleRate);
     loudnessMeter.prepare(sampleRate);
     truePeakDetector.prepare(sampleRate);
@@ -213,6 +214,9 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         truePeakDetector.process(left, right, numSamples);
         sampleRingBuffer.write(left, right, numSamples);
     }
+
+    // A reference track can be heard in place of the mix. The meters have measured the mix before this.
+    references.process(buffer, getSampleRate());
 
 #if USE_OSC
     // Clear the audio buffer if oscillator synthesis is used

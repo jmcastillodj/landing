@@ -30,7 +30,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 8> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound,
+    constexpr std::array<int, 9> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -44,6 +44,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     spectrogramView(spectrumSource),
     waveformView(p),
     balanceView(spectrumSource, p.apvts.state),
+    referenceView(p.references, p.apvts.state),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
     vBlankAttachment(this, [this](double timestampSeconds) { vBlank(timestampSeconds); })
@@ -87,6 +88,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(balanceView);
     addChildComponent(loudnessView);
     addChildComponent(radarView);
+    addChildComponent(referenceView);
 
     // The lenses of the waveform: the zoom of the amplitude goes by tenths, and the span of time through its choices
     waveformView.onVerticalStep = [this](int step, bool coarse)
@@ -220,7 +222,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addAndMakeVisible(presetsButton);
     presetsButton.buildMenu = [this](juce::PopupMenu& menu) { buildPresetsMenu(menu); };
 
-    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView })
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView })
         view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
@@ -575,6 +577,20 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
                      audioRunning ? elapsedSeconds : 0.f, readoutDue);
     historyView.record(numNewSlots, juce::jmax(levels.peakDb[0], levels.peakDb[1]), juce::jmax(levels.rmsDb[0], levels.rmsDb[1]));
 
+    // What the reference view compares its tracks with: the mix, as it has been playing
+    {
+        if (audioRunning)
+            widthAverage += (readings.width - widthAverage) * (1.f - std::exp(-elapsedSeconds / 15.f));
+
+        ReferenceView::Mix mixData;
+        mixData.integratedLufs = loudness.integrated;
+        mixData.peakDb = maxTruePeakDb;
+        mixData.width = widthAverage;
+        mixData.plr = std::isfinite(loudness.integrated) && loudness.integrated > -100.f && maxTruePeakDb > -150.f ? maxTruePeakDb - loudness.integrated : 0.f;
+        balanceView.getAverageCurve(mixData.curve);
+        referenceView.update(mixData, elapsedSeconds);
+    }
+
     // Only the visible view needs the samples themselves
     if (goniometerView.isVisible())
     {
@@ -637,6 +653,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewWaveform:    return &waveformView;
         case Parameters::viewBalance:     return &balanceView;
         case Parameters::viewLoudnessRound: return &radarView;
+        case Parameters::viewReference:   return &referenceView;
         default:                          return nullptr;
     }
 }
@@ -1168,6 +1185,15 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             addChoice("Turn takes", ID::radarSpeed);
             addChoice("Target", ID::loudnessTarget);
             menu.addItem("Clear the radar", [this] { radarView.clearHistory(); });
+            break;
+
+        case viewReference:
+            for (int slot = 0; slot < ReferenceManager::numSlots; ++slot)
+                menu.addItem("Load into reference " + juce::String(slot + 1) + "...", [this, slot] { referenceView.chooseFile(slot); });
+            menu.addSeparator();
+            menu.addItem("Remove the selected reference", [this] { referenceView.removeSelected(); });
+            menu.addItem("Loop the loudest part", [this] { referenceView.smartLoop(); });
+            menu.addItem("Level match", true, referenceView.isLevelMatched(), [this] { referenceView.setLevelMatched(!referenceView.isLevelMatched()); });
             break;
 
         case viewHistory:

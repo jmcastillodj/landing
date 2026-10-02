@@ -18,6 +18,7 @@
 #include "Engine/LoudnessMeter.h"
 #include "Engine/TruePeakDetector.h"
 #include "Engine/SampleRingBuffer.h"
+#include "Engine/ReferenceManager.h"
 
 using namespace juce;
 
@@ -82,6 +83,7 @@ public:
 
     // Carries every sample to the goniometer and the spectrum analyzer
     SampleRingBuffer sampleRingBuffer;
+    ReferenceManager references;
 
 #if USE_OSC
     // Oscillator for generating test signals
