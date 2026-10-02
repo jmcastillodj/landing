@@ -69,16 +69,46 @@ void LoudnessSummary::paint(juce::Graphics& g)
     for (auto& row : rows)
     {
         auto line = bounds.removeFromTop(rowHeight);
+        const bool isTruePeak = &row == &rows[2];
+        if (isTruePeak)
+            truePeakRow = line;
 
         g.setFont(Theme::labelFont());
-        g.setColour(Theme::textDim);
-        g.drawText(row.name, line.removeFromLeft(74), juce::Justification::centredLeft);
+        g.setColour(isTruePeak && truePeakHovered ? juce::Colours::white : Theme::textDim);
+        g.drawText(isTruePeak && truePeakHovered ? "RESET" : row.name, line.removeFromLeft(74), juce::Justification::centredLeft);
         g.setColour(Theme::textFaint);
         g.drawText(row.unit, line.removeFromRight(32), juce::Justification::centredLeft);
 
         g.setFont(Theme::font(14.f));
         g.setColour(row.warn ? Theme::over : Theme::text);
         g.drawText(row.value, line.withTrimmedRight(6), juce::Justification::centredRight);
+    }
+}
+
+void LoudnessSummary::mouseDown(const juce::MouseEvent& e)
+{
+    if (truePeakRow.contains(e.getPosition()) && onTruePeakClicked)
+        onTruePeakClicked();
+}
+
+void LoudnessSummary::mouseMove(const juce::MouseEvent& e)
+{
+    const bool over = truePeakRow.contains(e.getPosition());
+    if (over != truePeakHovered)
+    {
+        truePeakHovered = over;
+        setMouseCursor(over ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
+}
+
+void LoudnessSummary::mouseExit(const juce::MouseEvent&)
+{
+    if (truePeakHovered)
+    {
+        truePeakHovered = false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+        repaint();
     }
 }
 

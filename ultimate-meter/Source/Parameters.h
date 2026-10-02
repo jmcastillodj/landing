@@ -23,6 +23,7 @@ namespace Parameters
         inline const juce::String goniometerMode { "goniometerMode" };
         inline const juce::String goniometerPersistence { "goniometerPersistence" };
         inline const juce::String spectrumChannels { "spectrumChannels" };
+        inline const juce::String spectrumReference { "spectrumReference" };
         inline const juce::String spectrumTilt { "spectrumTilt" };
         inline const juce::String spectrumSmoothing { "spectrumSmoothing" };
         inline const juce::String spectrumResolution { "spectrumResolution" };
@@ -76,6 +77,13 @@ namespace Parameters
     inline constexpr std::array<float, 3> goniometerPersistenceSeconds { 0.f, 0.15f, 0.6f };
 
     inline const juce::StringArray spectrumChannelsNames { "Left / Right", "Mid / Side" };
+
+    // A reference curve that the spectrum can show: a straight line of a given slope in decibels per octave,
+    // placed at the average level of the signal so that the shape of the two can be compared. The first
+    // choice is none, and its slope is not used.
+    inline const juce::StringArray spectrumReferenceNames { "Off", "Pink noise (-3 dB/oct)", "White noise (0 dB/oct)", "Brown noise (-6 dB/oct)", "Typical mix (-4.5 dB/oct)", "Blue noise (+3 dB/oct)" };
+    inline const juce::StringArray spectrumReferenceShortNames { "", "PINK NOISE", "WHITE NOISE", "BROWN NOISE", "TYPICAL MIX", "BLUE NOISE" };
+    inline constexpr std::array<float, 6> spectrumReferenceSlopesDbPerOctave { 0.f, -3.f, 0.f, -6.f, -4.5f, 3.f };
 
     inline const juce::StringArray spectrumTiltNames { "0 dB/oct", "3 dB/oct", "4.5 dB/oct", "6 dB/oct" };
     inline constexpr std::array<float, 4> spectrumTiltsDbPerOctave { 0.f, 3.f, 4.5f, 6.f };
@@ -188,6 +196,7 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::goniometerMode, 2 }, "Goniometer Mode", goniometerModeNames, lissajousMode, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::goniometerPersistence, 2 }, "Goniometer Persistence", goniometerPersistenceNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumChannels, 2 }, "Spectrum Channels", spectrumChannelsNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumReference, 2 }, "Spectrum Reference", spectrumReferenceNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumTilt, 2 }, "Spectrum Tilt", spectrumTiltNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumSmoothing, 2 }, "Spectrum Smoothing", spectrumSmoothingNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumResolution, 2 }, "Spectrum Resolution", spectrumResolutionNames, 1, display));

@@ -17,6 +17,13 @@ public:
 
     void paint(juce::Graphics& g) override;
 
+    // Clicking the true peak, which holds the highest value since the last reset, restarts it
+    std::function<void()> onTruePeakClicked;
+
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+
     // Shows new readings, called by the editor once per frame. The numbers only take the new
     // readings when a readout is due, which the editor decides for every number at once, and
     // are only drawn again when what they say has changed. targetLufs is 0 for no target.
@@ -25,6 +32,8 @@ public:
 private:
     juce::String integrated, difference, shortTerm, range, truePeak;
     bool truePeakIsOver = false;
+    juce::Rectangle<int> truePeakRow;
+    bool truePeakHovered = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LoudnessSummary)
 };

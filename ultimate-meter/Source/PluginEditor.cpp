@@ -39,7 +39,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     goniometerView(audioProcessor.apvts, Parameters::ID::goniometerScale),
     spectrumView(spectrumSource),
     spectrogramView(spectrumSource),
-    waveformView(spectrumSource),
+    waveformView(p),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
     vBlankAttachment(this, [this](double timestampSeconds) { vBlank(timestampSeconds); })
@@ -84,6 +84,9 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
 
     addAndMakeVisible(levelMeters);
     addAndMakeVisible(loudnessSummary);
+
+    // A click on the true peak starts it again, as the reading is the highest since the last reset
+    loudnessSummary.onTruePeakClicked = [this] { audioProcessor.truePeakDetector.requestReset(); };
     addAndMakeVisible(correlationBar);
 
     // The controls of the views, each of which shows with the views that it belongs to
@@ -93,6 +96,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     controlBar.addMenu(ControlBar::views({ viewGoniometer }), apvts, ID::goniometerPersistence, "Persistence:");
 
     controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumChannels, "Channels:");
+    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumReference, "Reference:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum, viewSpectrogram }), apvts, ID::spectrumTilt, "Tilt:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumSmoothing, "Smoothing:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum, viewSpectrogram }), apvts, ID::spectrumResolution, "FFT:");
@@ -428,6 +432,9 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     loudnessView.setSpan(timeSpan);
     historyView.setSpan(timeSpan);
     waveformView.setSpan(timeSpan);
+
+    // The waveform is made of the samples themselves, which it reads whichever view is showing
+    waveformView.update();
     historyView.setShown(getChoice(ID::historyShow) != rmsMeters, getChoice(ID::historyShow) != peakMeters);
     spectrogramView.setSpan(timeSpan);
 
@@ -452,7 +459,6 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         // While frozen the pictures stand still, but the recording carries on underneath
         const bool frozen = freezeButton != nullptr && freezeButton->getToggleState();
         spectrogramView.record(numNewSlots, hasNewSpectra, tilt, frozen);
-        waveformView.record(numNewSlots, hasNewSpectra, juce::jmax(readings.peak[0], readings.peak[1]), juce::jmax(readings.rms[0], readings.rms[1]));
 
         if (spectrumView.isVisible())
         {
@@ -461,6 +467,11 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
             spectrumSettings.tiltDbPerOctave = tilt;
             spectrumSettings.smoothingOctaves = valueAt(spectrumSmoothingOctaves, getChoice(ID::spectrumSmoothing));
             spectrumSettings.peakHold = isOn(ID::spectrumPeakHold);
+
+            const int reference = getChoice(ID::spectrumReference);
+            spectrumSettings.hasReference = reference > 0;
+            spectrumSettings.referenceSlopeDbPerOctave = valueAt(spectrumReferenceSlopesDbPerOctave, reference);
+            spectrumSettings.referenceName = spectrumReferenceShortNames[reference];
             spectrumView.update(hasNewSpectra, spectrumSettings, elapsedSeconds, frozen);
         }
     }

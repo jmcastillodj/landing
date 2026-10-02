@@ -129,6 +129,8 @@ void SpectrumView::paint(juce::Graphics& g)
             }
         }
 
+        paintReference(g);
+
         // The correlation strip runs along the bottom of the plot
         if (correlationStrip.isValid())
         {
@@ -145,8 +147,67 @@ void SpectrumView::paint(juce::Graphics& g)
     g.setColour(Theme::second);
     g.drawText(settings.midSide ? "SIDE" : "RIGHT", legend.removeFromLeft(44), juce::Justification::centredLeft);
 
+    if (settings.hasReference)
+    {
+        g.setColour(Theme::text.withAlpha(0.75f));
+        g.drawText("REF: " + settings.referenceName, legend.withTrimmedLeft(10).withWidth(180), juce::Justification::centredLeft);
+    }
+
     if (hover.has_value())
         paintReadout(g);
+}
+
+bool SpectrumView::updateReferenceAnchor(float elapsedSeconds)
+{
+    if (shown[0].size() < 2)
+        return false;
+
+    const double octavesPerPoint = std::log2(maxFrequency / minFrequency) / (double)(shown[0].size() - 1);
+    const double slope = (double)settings.referenceSlopeDbPerOctave + (double)settings.tiltDbPerOctave;
+
+    double sum = 0.0;
+    int count = 0;
+
+    for (size_t point = 0; point < shown[0].size(); ++point)
+    {
+        const double frequency = minFrequency * std::pow(2.0, octavesPerPoint * (double)point);
+        if (frequency < 100.0 || frequency > 10000.0 || shown[0][point] < minDecibels + 6.f)
+            continue;
+
+        sum += (double)shown[0][point] - slope * std::log2(frequency / 1000.0);
+        ++count;
+    }
+
+    if (count == 0)
+        return false;
+
+    // The line follows the level of the signal slowly, so that it stays still while the curve moves
+    const float target = (float)(sum / (double)count);
+    const float before = referenceAnchorDb;
+    referenceAnchorDb = hasReferenceAnchor ? referenceAnchorDb + (target - referenceAnchorDb) * (1.f - std::exp(-elapsedSeconds / 0.8f)) : target;
+    hasReferenceAnchor = true;
+    return std::abs(referenceAnchorDb - before) > 0.05f;
+}
+
+void SpectrumView::paintReference(juce::Graphics& g)
+{
+    if (!settings.hasReference || !hasReferenceAnchor)
+        return;
+
+    // In log frequency and decibels a constant slope in decibels per octave is a straight line
+    const double slope = (double)settings.referenceSlopeDbPerOctave + (double)settings.tiltDbPerOctave;
+    auto levelAt = [&](double frequency) { return referenceAnchorDb + (float)(slope * std::log2(frequency / 1000.0)); };
+
+    juce::Path line;
+    line.startNewSubPath(xOf(minFrequency), yOf(levelAt(minFrequency)));
+    line.lineTo(xOf(maxFrequency), yOf(levelAt(maxFrequency)));
+
+    juce::Path dashed;
+    const float dashes[] { 7.f, 5.f };
+    juce::PathStrokeType(1.4f).createDashedStroke(dashed, line, dashes, 2);
+
+    g.setColour(juce::Colours::white.withAlpha(0.8f));
+    g.fillPath(dashed);
 }
 
 void SpectrumView::paintReadout(juce::Graphics& g)
@@ -277,6 +338,8 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
         }
     }
 
+    const bool anchorMoved = settings.hasReference ? updateReferenceAnchor(elapsedSeconds) : (hasReferenceAnchor = false);
+
     // Keep a copy of where the curves are, every so often, for the trails
     secondsSinceTrail += elapsedSeconds;
     if (secondsSinceTrail >= trailIntervalSeconds)
@@ -287,7 +350,7 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
     }
 
     // A twentieth of a decibel is less than a pixel
-    if (furthestMoved > 0.05f || settingsChanged)
+    if (furthestMoved > 0.05f || settingsChanged || anchorMoved)
         repaint();
 }
 

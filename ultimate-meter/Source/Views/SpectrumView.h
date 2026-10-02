@@ -44,10 +44,14 @@ public:
         float tiltDbPerOctave = 0.f;
         float smoothingOctaves = 0.f;
         bool peakHold = false;
+        bool hasReference = false;     // A straight reference line, such as pink noise, drawn at the level of the signal
+        float referenceSlopeDbPerOctave = 0.f;
+        juce::String referenceName;
 
         bool operator==(const Settings& other) const
         {
-            return midSide == other.midSide && peakHold == other.peakHold
+            return midSide == other.midSide && peakHold == other.peakHold && hasReference == other.hasReference
+                && juce::exactlyEqual(referenceSlopeDbPerOctave, other.referenceSlopeDbPerOctave)
                 && juce::exactlyEqual(tiltDbPerOctave, other.tiltDbPerOctave)
                 && juce::exactlyEqual(smoothingOctaves, other.smoothingOctaves);
         }
@@ -75,6 +79,12 @@ public:
 private:
     void paintGrid(juce::Graphics& g);
     void paintReadout(juce::Graphics& g);
+    void paintReference(juce::Graphics& g);
+
+    // Finds the level at which the reference line is drawn: the average of the first curve between 100 Hz
+    // and 10 kHz, once the line's own slope has been taken out of it, so that a signal that has the shape
+    // of the reference lies right on the line
+    bool updateReferenceAnchor(float elapsedSeconds);
 
     // Builds the path of a curve within the plot. A closed path runs along the bottom for filling.
     // pointStep is how many of the curve's points each point of the path stands for.
@@ -107,6 +117,9 @@ private:
     Settings settings;
 
     CachedLayer grid;
+
+    float referenceAnchorDb = 0.f;
+    bool hasReferenceAnchor = false;
 
     // Where the mouse is, if it is over the plot
     std::optional<juce::Point<int>> hover;

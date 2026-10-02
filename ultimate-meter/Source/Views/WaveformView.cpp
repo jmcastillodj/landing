@@ -2,29 +2,20 @@
 
 namespace
 {
-    constexpr int numPoints = 96;
-    constexpr double lowEdgeHz = 250.0, midEdgeHz = 2500.0;
+    constexpr double lowCrossoverHz = 250.0, highCrossoverHz = 2500.0;
+    constexpr int maxSamplesPerUpdate = 16384;
 
-    float heightOf(float gain)
+    juce::String dbLabel(float gain)
     {
-        // The height is a level in decibels, so that quiet passages still have a shape
-        const float db = juce::Decibels::gainToDecibels(gain, -200.f);
-        return juce::jlimit(0.f, 1.f, (db - WaveformView::minDb) / (0.f - WaveformView::minDb));
+        const int db = juce::roundToInt(juce::Decibels::gainToDecibels(gain));
+        return db == 0 ? juce::String("0 dB") : juce::String(db);
     }
 }
 
-WaveformView::WaveformView(SpectrumSource& spectrumSource) : source(spectrumSource)
+WaveformView::WaveformView(UltimateMeterAudioProcessor& processor) : audioProcessor(processor), columns((size_t)maxColumns)
 {
     setOpaque(true);
-
-    display.numPoints = numPoints;
-    display.minFrequency = 30.0;
-    display.maxFrequency = 16000.0;
-
-    const double octaves = std::log(display.maxFrequency / display.minFrequency);
-    auto pointOf = [&](double hz) { return juce::roundToInt((double)numPoints * std::log(hz / display.minFrequency) / octaves); };
-    lowPoints = pointOf(lowEdgeHz);
-    midPoints = pointOf(midEdgeHz);
+    samples.setSize(2, maxSamplesPerUpdate);
 }
 
 void WaveformView::resized()
@@ -44,9 +35,13 @@ void WaveformView::setSpan(float seconds)
 
 void WaveformView::clearHistory()
 {
-    history.clear();
-    pending = {};
-    lastBands = {};
+    written = 0;
+    minimum = maximum = 0.f;
+    sumSquares = sumLow = sumMid = sumHigh = 0.0;
+    countInColumn = 0;
+    phase = 0.0;
+    lowState[0] = lowState[1] = highState[0] = highState[1] = 0.0;
+    lastTotalWritten = audioProcessor.sampleRingBuffer.getTotalWritten();
     repaint();
 }
 
@@ -54,12 +49,12 @@ juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
 {
     // The bands of music are not equally strong: the lows carry most of the power. Each is weighed so that
     // a typical mix comes out white-ish and a sound with more of one band than usual takes its colour.
-    const float r = std::sqrt(juce::jmax(0.f, low) * 0.35f);
-    const float g = std::sqrt(juce::jmax(0.f, mid) * 1.4f);
-    const float b = std::sqrt(juce::jmax(0.f, high) * 5.f);
+    const float r = std::sqrt(juce::jmax(0.f, low)) * 0.6f;
+    const float g = std::sqrt(juce::jmax(0.f, mid));
+    const float b = std::sqrt(juce::jmax(0.f, high)) * 2.5f;
 
     const float top = juce::jmax(r, g, b);
-    if (top <= 1.0e-9f)
+    if (top <= 1.0e-7f)
         return Theme::textFaint;
 
     // Normalise to the strongest band, then stretch the contrast so that the colours are clear
@@ -67,48 +62,119 @@ juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
     return juce::Colour::fromFloatRGBA(0.18f + 0.82f * channel(r), 0.18f + 0.82f * channel(g), 0.18f + 0.82f * channel(b), 1.f);
 }
 
-void WaveformView::record(int numNewSlots, bool hasNewSpectra, float peak, float rms)
+void WaveformView::prepareFilters(double sampleRate)
 {
-    pending.peak = juce::jmax(pending.peak, peak);
-    pending.rms = juce::jmax(pending.rms, rms);
+    filterRate = sampleRate;
+    lowCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * lowCrossoverHz / sampleRate);
+    highCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * highCrossoverHz / sampleRate);
+    samplesPerColumn = sampleRate / (double)columnsPerSecond;
+}
 
-    if (hasNewSpectra)
+void WaveformView::addSample(float left, float right)
+{
+    // The extremes of both channels, so that the loudest sample of either is never left out
+    minimum = juce::jmin(minimum, left, right);
+    maximum = juce::jmax(maximum, left, right);
+
+    const double mono = 0.5 * ((double)left + (double)right);
+    sumSquares += 0.5 * ((double)left * left + (double)right * right);
+
+    // Two one-pole stages in a row make each crossover steeper
+    lowState[0] += lowCoefficient * (mono - lowState[0]);
+    lowState[1] += lowCoefficient * (lowState[0] - lowState[1]);
+    highState[0] += highCoefficient * (mono - highState[0]);
+    highState[1] += highCoefficient * (highState[0] - highState[1]);
+
+    const double low = lowState[1];
+    const double mid = highState[1] - lowState[1];
+    const double high = mono - highState[1];
+    sumLow += low * low;
+    sumMid += mid * mid;
+    sumHigh += high * high;
+    ++countInColumn;
+}
+
+void WaveformView::finishColumn()
+{
+    Column column;
+    column.minimum = minimum;
+    column.maximum = maximum;
+
+    if (countInColumn > 0)
     {
-        source.getEngine().render(SpectrumEngine::Curve::mid, display, source.getSampleRate(), spectrum);
-
-        float low = 0.f, mid = 0.f, high = 0.f;
-        for (int point = 0; point < (int)spectrum.size(); ++point)
-        {
-            // Power of the point, relative to a very quiet floor so that silence adds nothing
-            const float power = std::pow(10.f, juce::jmax(spectrum[(size_t)point], -100.f) / 10.f);
-            (point < lowPoints ? low : point < midPoints ? mid : high) += power;
-        }
-
-        // A band is shown by the loudest it was in the slot
-        pending.low = juce::jmax(pending.low, low);
-        pending.mid = juce::jmax(pending.mid, mid);
-        pending.high = juce::jmax(pending.high, high);
+        const double n = (double)countInColumn;
+        column.rms = (float)std::sqrt(sumSquares / n);
+        column.low = (float)(sumLow / n);
+        column.mid = (float)(sumMid / n);
+        column.high = (float)(sumHigh / n);
     }
 
-    if (numNewSlots <= 0)
+    columns[(size_t)(written % (juce::uint64)maxColumns)] = column;
+    ++written;
+
+    minimum = maximum = 0.f;
+    sumSquares = sumLow = sumMid = sumHigh = 0.0;
+    countInColumn = 0;
+}
+
+void WaveformView::update()
+{
+    auto& ringBuffer = audioProcessor.sampleRingBuffer;
+    const double sampleRate = audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0;
+    if (!juce::approximatelyEqual(sampleRate, filterRate))
+        prepareFilters(sampleRate);
+
+    const auto totalWritten = ringBuffer.getTotalWritten();
+
+    // The buffer starts again from nothing when the host prepares the plugin
+    if (totalWritten < lastTotalWritten)
+        lastTotalWritten = 0;
+
+    const auto numNew = totalWritten - lastTotalWritten;
+    if (numNew == 0)
         return;
 
-    auto slot = pending;
+    // If more arrived than one frame can take, the oldest are left out. The time they covered is
+    // filled with silence, so that the waveform keeps its place in time.
+    const int numSamples = (int)std::min<juce::uint64>(numNew, (juce::uint64)maxSamplesPerUpdate);
 
-    // A slot that no new spectrum came in keeps the colour that came before it
-    if (slot.low + slot.mid + slot.high > 0.f)
-        lastBands = slot;
-    else
+    if (!ringBuffer.readLatest(samples.getWritePointer(0), samples.getWritePointer(1), numSamples))
+        return;
+
+    lastTotalWritten = totalWritten;
+
+    const auto* left = samples.getReadPointer(0);
+    const auto* right = samples.getReadPointer(1);
+    const bool isLong = numNew > (juce::uint64)numSamples;
+
+    for (int i = 0; i < numSamples; ++i)
     {
-        slot.low = lastBands.low;
-        slot.mid = lastBands.mid;
-        slot.high = lastBands.high;
+        if (!std::isfinite(left[i]) || !std::isfinite(right[i]))
+            addSample(0.f, 0.f);
+        else
+            addSample(left[i], right[i]);
+
+        phase += 1.0;
+        if (phase >= samplesPerColumn)
+        {
+            phase -= samplesPerColumn;
+            finishColumn();
+        }
     }
 
-    for (int i = 0; i < numNewSlots; ++i)
-        history.push(slot);
+    if (isLong)
+    {
+        // The samples that were left out count as silence of their length
+        double skipped = (double)(numNew - (juce::uint64)numSamples) + phase;
+        while (skipped >= samplesPerColumn)
+        {
+            skipped -= samplesPerColumn;
+            minimum = maximum = 0.f;
+            finishColumn();
+        }
+        phase = skipped;
+    }
 
-    pending = {};
     repaint(plot);
 }
 
@@ -120,51 +186,89 @@ void WaveformView::paint(juce::Graphics& g)
         return;
 
     const float midY = (float)plot.getCentreY();
-    const float halfHeight = 0.5f * (float)plot.getHeight() - 2.f;
-    const int numSlots = Timeline::slotsIn(spanSeconds);
-    const float slotWidth = (float)plot.getWidth() / (float)numSlots;
+    const float half = 0.5f * (float)plot.getHeight() - 2.f;
 
-    // The middle line, and the lines for -12 and -24 dB above and below it
+    // Lines for full scale, -6 and -12 dB, above and below the middle line, which is silence
     g.setFont(Theme::font(10.5f));
-    for (int decibels : { 0, -12, -24 })
+    for (float gain : { 1.f, 0.5f, 0.25f })
     {
-        const float h = halfHeight * heightOf(juce::Decibels::decibelsToGain((float)decibels));
-        g.setColour(decibels == 0 ? Theme::gridStrong : Theme::grid);
+        const float h = half * gain;
+        g.setColour(juce::exactlyEqual(gain, 1.f) ? Theme::gridStrong : Theme::grid);
         g.fillRect((float)plot.getX(), midY - h, (float)plot.getWidth(), 1.f);
         g.fillRect((float)plot.getX(), midY + h, (float)plot.getWidth(), 1.f);
 
         g.setColour(Theme::textDim);
-        g.drawText(decibels == 0 ? "0" : juce::String(decibels), juce::Rectangle<float>(30.f, 12.f).withCentre({ (float)plot.getX() - 17.f, midY - h }), juce::Justification::centredRight);
+        g.drawText(dbLabel(gain), juce::Rectangle<float>(34.f, 12.f).withCentre({ (float)plot.getX() - 18.f, midY - h }), juce::Justification::centredRight);
     }
+    g.setColour(Theme::gridStrong);
+    g.fillRect((float)plot.getX(), midY, (float)plot.getWidth(), 1.f);
 
+    if (written > 0)
     {
         juce::Graphics::ScopedSaveState state(g);
         g.reduceClipRegion(plot.expanded(0, 2));
 
-        for (int age = numSlots - 1; age >= 0; --age)
+        // A bin of k columns is about a pixel wide. Bins are tied to the absolute number of the column, so that
+        // an old bin always holds the same columns and does not change as the picture scrolls, and the newest
+        // bin's growth is shown as a smooth shift of the whole picture.
+        const int spanColumns = juce::jmax(1, juce::roundToInt(spanSeconds * (float)columnsPerSecond));
+        const float pixelsPerColumn = (float)plot.getWidth() / (float)spanColumns;
+        const int k = juce::jmax(1, juce::roundToInt((float)spanColumns / (float)plot.getWidth()));
+        const float binWidth = pixelsPerColumn * (float)k;
+
+        const auto newest = (juce::int64)written - 1;
+        const auto oldest = std::max<juce::int64>(0, (juce::int64)written - maxColumns);
+        const int filled = (int)(newest % k) + 1;
+        const auto newestBinStart = newest - filled + 1;
+        const float firstRight = (float)plot.getRight() + (float)(k - filled) * pixelsPerColumn;
+
+        for (int bin = 0;; ++bin)
         {
-            const auto* slot = history.fromNewest(age);
-            if (slot == nullptr)
+            const float right = firstRight - (float)bin * binWidth;
+            if (right < (float)plot.getX())
+                break;
+
+            const auto start = newestBinStart - (juce::int64)bin * k;
+            const auto end = std::min<juce::int64>(newest, start + k - 1);
+            if (end < oldest)
+                break;
+
+            float lowest = 0.f, highest = 0.f, rmsSquares = 0.f, low = 0.f, mid = 0.f, high = 0.f;
+            int count = 0;
+
+            for (auto index = std::max<juce::int64>(start, oldest); index <= end; ++index)
+            {
+                const auto& column = columns[(size_t)(index % maxColumns)];
+                lowest = juce::jmin(lowest, column.minimum);
+                highest = juce::jmax(highest, column.maximum);
+                rmsSquares += column.rms * column.rms;
+                low += column.low;
+                mid += column.mid;
+                high += column.high;
+                ++count;
+            }
+
+            if (count == 0)
                 continue;
 
-            const float x = (float)plot.getRight() - slotWidth * (float)(age + 1);
-            const float width = juce::jmax(1.f, slotWidth);
+            auto colour = colourOfBands(low, mid, high);
 
-            auto colour = colourOfBands(slot->low, slot->mid, slot->high);
+            // A peak at full scale turns the column red
+            const float peak = juce::jmax(highest, -lowest);
+            colour = colour.interpolatedWith(Theme::over, 0.85f * juce::jlimit(0.f, 1.f, (peak - 0.9f) / 0.08f));
 
-            // Close to full scale, the column goes red
-            const float hotness = juce::jlimit(0.f, 1.f, (juce::Decibels::gainToDecibels(slot->peak, -200.f) + 3.f) / 3.f);
-            colour = colour.interpolatedWith(Theme::over, 0.8f * hotness);
+            const float x = right - binWidth;
+            const float width = binWidth + 0.5f;
+            const float top = midY - juce::jlimit(0.f, 1.f, highest) * half;
+            const float bottom = midY - juce::jlimit(-1.f, 0.f, lowest) * half;
 
-            const float peakHeight = halfHeight * heightOf(slot->peak);
-            const float rmsHeight = halfHeight * heightOf(slot->rms);
+            // The outer shape is the highest and lowest samples, a little dimmer, and the core is the RMS level
+            g.setColour(colour.withMultipliedBrightness(0.78f));
+            g.fillRect(x, top, width, juce::jmax(1.f, bottom - top));
 
-            // The outer shape is the peak, a little dimmer, and the core is the RMS, brighter
-            g.setColour(colour.withMultipliedBrightness(0.8f));
-            g.fillRect(x, midY - peakHeight, width, 2.f * peakHeight + 1.f);
-
-            g.setColour(colour.brighter(0.25f));
-            g.fillRect(x, midY - rmsHeight, width, 2.f * rmsHeight + 1.f);
+            const float core = juce::jmin(1.f, std::sqrt(rmsSquares / (float)count)) * half;
+            g.setColour(colour.brighter(0.2f));
+            g.fillRect(x, midY - core, width, juce::jmax(1.f, 2.f * core));
         }
     }
 
