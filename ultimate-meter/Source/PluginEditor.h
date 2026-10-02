@@ -74,6 +74,7 @@ private:
     void rebuildMultiLayout();
     void layoutViews();
     void saveMultiState();
+    void captureSizes();
 
     // Draws the header and the bottom bar, whose raised parts meet the recessed ones in S-shaped shoulders
     void paintHeader(juce::Graphics& g, juce::Rectangle<int> area);
@@ -136,6 +137,13 @@ private:
     std::vector<std::unique_ptr<juce::StretchableLayoutResizerBar>> rowDividers;
     std::vector<juce::Component*> rowItems;
     int multiLayoutKey = -1;     // what the layout was last built for
+    std::vector<int> multiRowNumbers; // the row of each of multiRows
+
+    // The share of the height that each row has, and of its row's width that each view has (0 for none yet).
+    // They are read from the layout after every change, so that adding a view or taking one away does
+    // not undo the sizes that were dragged, and they are kept in the session.
+    std::array<double, maxRows> rowWeight {};
+    std::array<double, 6> viewWeight {};
 
     // Set by the reset button and the reset item of the menu, and cleared by the next update
     bool resetTicksRequested = false;

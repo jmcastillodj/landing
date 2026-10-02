@@ -38,7 +38,33 @@ void GoniometerView::resized()
     isLit = false;
     hasLastPoint = false;
 
-    scaleKnob.setBounds(getLocalBounds().removeFromBottom(128).removeFromLeft(108).reduced(4, 4));
+    // The knob stands in a corner, the first of the four that the circle and its labels do not reach.
+    // In a view too small for any of them it is out of the way altogether, rather than over the picture.
+    {
+        const int w = getWidth(), h = getHeight();
+        const std::array<juce::Rectangle<int>, 4> corners {
+            juce::Rectangle<int>(0, h - 128, 108, 128), juce::Rectangle<int>(0, 0, 108, 128),
+            juce::Rectangle<int>(w - 108, h - 128, 108, 128), juce::Rectangle<int>(w - 108, 0, 108, 128) };
+
+        const auto centre = plot.getCentre().toFloat();
+        const float reach = 0.5f * (float)plot.getWidth() + 30.f; // the circle and the labels around it
+
+        bool placed = false;
+        for (const auto& corner : corners)
+        {
+            const auto nearest = juce::Point<float>(juce::jlimit((float)corner.getX(), (float)corner.getRight(), centre.x),
+                                                    juce::jlimit((float)corner.getY(), (float)corner.getBottom(), centre.y));
+            if (corner.getWidth() > 0 && nearest.getDistanceFrom(centre) > reach)
+            {
+                scaleKnob.setBounds(corner.reduced(4, 4));
+                placed = true;
+                break;
+            }
+        }
+
+        scaleKnob.setVisible(placed);
+    }
+
     background.invalidate();
 }
 

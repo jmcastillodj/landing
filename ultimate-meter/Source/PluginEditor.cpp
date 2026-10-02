@@ -18,6 +18,8 @@ namespace
     const juce::Identifier editorHeightProperty { "editorHeight" };
     const juce::Identifier multiEnabledProperty { "multiEnabled" };
     const juce::Identifier multiRowsProperty { "multiRows" };
+    const juce::Identifier multiRowWeightsProperty { "multiRowWeights" };
+    const juce::Identifier multiViewWeightsProperty { "multiViewWeights" };
 }
 
 namespace
@@ -137,6 +139,15 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
         const auto rows = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowsProperty, "").toString(), ",", "");
         for (int view = 0; view < (int)viewRow.size(); ++view)
             viewRow[(size_t)view] = view < rows.size() ? juce::jlimit(-1, maxRows - 1, rows[view].getIntValue()) : -1;
+    }
+
+    {
+        const auto rowWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiRowWeightsProperty, "").toString(), ",", "");
+        const auto viewWeights = juce::StringArray::fromTokens(apvts.state.getProperty(multiViewWeightsProperty, "").toString(), ",", "");
+        for (int i = 0; i < (int)rowWeight.size() && i < rowWeights.size(); ++i)
+            rowWeight[(size_t)i] = rowWeights[i].getDoubleValue();
+        for (int i = 0; i < (int)viewWeight.size() && i < viewWeights.size(); ++i)
+            viewWeight[(size_t)i] = viewWeights[i].getDoubleValue();
     }
 
     if (multiMask() == 0)
@@ -519,6 +530,45 @@ void UltimateMeterAudioProcessorEditor::saveMultiState()
     for (int row : viewRow)
         rows.add(juce::String(row));
     state.setProperty(multiRowsProperty, rows.joinIntoString(","), nullptr);
+
+    juce::StringArray rowWeights, viewWeights;
+    for (double weight : rowWeight)
+        rowWeights.add(juce::String(weight, 4));
+    for (double weight : viewWeight)
+        viewWeights.add(juce::String(weight, 4));
+    state.setProperty(multiRowWeightsProperty, rowWeights.joinIntoString(","), nullptr);
+    state.setProperty(multiViewWeightsProperty, viewWeights.joinIntoString(","), nullptr);
+}
+
+// Reads the sizes that the layout has given, as shares
+void UltimateMeterAudioProcessorEditor::captureSizes()
+{
+    if (multiRows.empty() || multiRows.size() != multiRowNumbers.size())
+        return;
+
+    double totalHeight = 0.0;
+    for (auto& row : multiRows)
+        totalHeight += row->getHeight();
+
+    if (totalHeight <= 0.0)
+        return;
+
+    for (size_t i = 0; i < multiRows.size(); ++i)
+    {
+        rowWeight[(size_t)multiRowNumbers[i]] = (double)multiRows[i]->getHeight() / totalHeight;
+
+        double totalWidth = 0.0;
+        for (auto* view : multiRows[i]->getViews())
+            totalWidth += view->getWidth();
+
+        if (totalWidth > 0.0)
+            for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+                for (auto* view : multiRows[i]->getViews())
+                    if (view == componentOfView(viewId))
+                        viewWeight[(size_t)viewId] = (double)view->getWidth() / totalWidth;
+    }
+
+    saveMultiState();
 }
 
 // The rows that are in use are numbered from the top without a gap, so that no row is empty
@@ -676,6 +726,7 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
 
     rowDividers.clear();
     multiRows.clear();
+    multiRowNumbers.clear();
     rowItems.clear();
     rowLayout.clearAllItems();
 
@@ -687,15 +738,60 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
     constexpr int minRowHeight = 90;
     int index = 0;
 
+    // The rows that already had a size keep it, and a row that is new takes an equal share of what the others
+    // would have if they were all equal
+    int numUsed = 0;
+    double knownTotal = 0.0;
+    int numKnown = 0;
+    for (int row = 0; row < numRows; ++row)
+    {
+        const bool used = std::any_of(tabOrder.begin(), tabOrder.end(), [&](int viewId) { return viewRow[(size_t)viewId] == row; });
+        numUsed += used ? 1 : 0;
+        if (used && rowWeight[(size_t)row] > 0.0)
+        {
+            knownTotal += rowWeight[(size_t)row];
+            ++numKnown;
+        }
+    }
+
+    const double newRowShare = numKnown > 0 ? knownTotal / (double)numKnown : 1.0 / (double)juce::jmax(1, numUsed);
+    double totalWeight = 0.0;
+    for (int row = 0; row < numRows; ++row)
+    {
+        const bool used = std::any_of(tabOrder.begin(), tabOrder.end(), [&](int viewId) { return viewRow[(size_t)viewId] == row; });
+        if (used)
+            totalWeight += rowWeight[(size_t)row] > 0.0 ? rowWeight[(size_t)row] : newRowShare;
+    }
+
     for (int row = 0; row < numRows; ++row)
     {
         std::vector<juce::Component*> views;
+        std::vector<double> weights;
+        double known = 0.0;
+        int unknown = 0;
+
         for (int viewId : tabOrder)
             if (viewRow[(size_t)viewId] == row)
+            {
                 views.push_back(componentOfView(viewId));
+                weights.push_back(viewWeight[(size_t)viewId]);
+                known += viewWeight[(size_t)viewId];
+                unknown += viewWeight[(size_t)viewId] > 0.0 ? 0 : 1;
+            }
 
         if (views.empty())
             continue;
+
+        // A view without a size takes an equal share of the row, and the shares are made to add up to one
+        const double fill = known > 0.0 ? known / (double)(views.size() - (size_t)unknown) : 1.0 / (double)views.size();
+        double sum = 0.0;
+        for (auto& weight : weights)
+        {
+            weight = weight > 0.0 ? weight : fill;
+            sum += weight;
+        }
+        for (auto& weight : weights)
+            weight /= sum;
 
         if (!rowItems.empty())
         {
@@ -707,11 +803,13 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
         }
 
         multiRows.push_back(std::make_unique<MultiRow>());
+        multiRowNumbers.push_back(row);
         addAndMakeVisible(*multiRows.back());
-        multiRows.back()->setViews(views);
+        multiRows.back()->setViews(views, weights);
 
-        // Every row starts with an equal share, and can be dragged to any share above its minimum
-        rowLayout.setItemLayout(index++, minRowHeight, -1.0, -1.0 / (double)numRows);
+        // A row can be dragged to any share above its minimum
+        const double share = (rowWeight[(size_t)row] > 0.0 ? rowWeight[(size_t)row] : newRowShare) / totalWeight;
+        rowLayout.setItemLayout(index++, minRowHeight, -1.0, -share);
         rowItems.push_back(multiRows.back().get());
     }
 
@@ -735,6 +833,7 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
 
             rowDividers.clear();
             multiRows.clear();
+            multiRowNumbers.clear();
             rowItems.clear();
         }
 
@@ -759,6 +858,8 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
 
     rowLayout.layOutComponents(rowItems.data(), (int)rowItems.size(), viewArea.getX(), viewArea.getY(), viewArea.getWidth(),
                                viewArea.getHeight(), true, true);
+
+    captureSizes();
 }
 
 void UltimateMeterAudioProcessorEditor::resetMeasurements()

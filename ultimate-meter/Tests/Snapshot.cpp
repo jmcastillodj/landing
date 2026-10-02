@@ -372,6 +372,13 @@ int main(int argc, char* argv[])
         if (id == "audio" || id == "from")
             continue;
 
+        // prop.NAME=VALUE sets a property of the saved state, such as prop.multiRowWeights=0.75,0.25,0,0
+        if (id.startsWith("prop."))
+        {
+            processor.apvts.state.setProperty(id.fromFirstOccurrenceOf("prop.", false, false), argument.fromFirstOccurrenceOf("=", false, false), nullptr);
+            continue;
+        }
+
         // multi=1:0,5:0,4:1 puts those views on screen together, each as view:row (multi mode)
         if (id == "multi")
         {

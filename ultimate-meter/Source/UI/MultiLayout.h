@@ -14,9 +14,11 @@ public:
 
     MultiRow() = default;
 
-    // Takes the views into the row, in order. The row does not own them.
-    void setViews(const std::vector<juce::Component*>& newViews)
+    // Takes the views into the row, in order. The row does not own them. weights say how much of the
+    // row each view gets, relative to the others; a view without one (0) gets an equal share.
+    void setViews(const std::vector<juce::Component*>& newViews, const std::vector<double>& weights = {})
     {
+        views = newViews;
         dividers.clear();
         items.clear();
         layout.clearAllItems();
@@ -27,7 +29,8 @@ public:
             addAndMakeVisible(*newViews[i]);
 
             // Every view starts with an equal share, and can be dragged to any share above its minimum
-            layout.setItemLayout(index++, minViewWidth, -1.0, -1.0 / (double)newViews.size());
+            const double weight = i < weights.size() && weights[i] > 0.0 ? weights[i] : 1.0 / (double)newViews.size();
+            layout.setItemLayout(index++, minViewWidth, -1.0, -weight);
             items.push_back(newViews[i]);
 
             if (i + 1 < newViews.size())
@@ -43,6 +46,8 @@ public:
         resized();
     }
 
+    const std::vector<juce::Component*>& getViews() const { return views; }
+
     void resized() override
     {
         if (!items.empty() && !getLocalBounds().isEmpty())
@@ -52,7 +57,7 @@ public:
 private:
     juce::StretchableLayoutManager layout;
     std::vector<std::unique_ptr<juce::StretchableLayoutResizerBar>> dividers;
-    std::vector<juce::Component*> items;
+    std::vector<juce::Component*> items, views;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MultiRow)
 };

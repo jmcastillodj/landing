@@ -12,9 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { name: macOS, os: macos-latest }
-          - { name: Windows, os: windows-latest }
+        # Windows takes four times as long, so it only runs when the workflow is started by hand
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"macOS","os":"macos-latest"},{"name":"Windows","os":"windows-latest"}]' || '[{"name":"macOS","os":"macos-latest"}]') }}
     defaults:
       run:
         working-directory: ultimate-meter
