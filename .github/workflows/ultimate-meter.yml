@@ -4,6 +4,12 @@ on:
   push:
     paths: ['ultimate-meter/**', '.github/workflows/ultimate-meter.yml']
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'What to build by hand'
+        type: choice
+        options: [both, windows, macos]
+        default: both
 
 jobs:
   build:
@@ -13,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows takes four times as long, so it only runs when the workflow is started by hand
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"macOS","os":"macos-latest"},{"name":"Windows","os":"windows-latest"}]' || '[{"name":"macOS","os":"macos-latest"}]') }}
+        include: ${{ fromJSON(github.event_name != 'workflow_dispatch' && '[{"name":"macOS","os":"macos-latest"}]' || inputs.platform == 'windows' && '[{"name":"Windows","os":"windows-latest"}]' || inputs.platform == 'macos' && '[{"name":"macOS","os":"macos-latest"}]' || '[{"name":"macOS","os":"macos-latest"},{"name":"Windows","os":"windows-latest"}]') }}
     defaults:
       run:
         working-directory: ultimate-meter
@@ -50,4 +56,3 @@ jobs:
           name: UltimateMeter-${{ matrix.name }}
           path: |
             ultimate-meter/build/UltimateMeter_artefacts/Release/VST3
-            ultimate-meter/build/UltimateMeter_artefacts/Release/Standalone
