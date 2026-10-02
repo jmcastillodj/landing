@@ -4,6 +4,7 @@ namespace
 {
     constexpr double lowCrossoverHz = 250.0, highCrossoverHz = 2500.0;
     constexpr int maxSamplesPerUpdate = 16384;
+    constexpr int controlWidth = 124, controlHeight = 22, buttonWidth = 30;
 
     // The signals, by number
     enum Signal { signalLeft, signalRight, signalMid, signalSide };
@@ -37,7 +38,8 @@ namespace
     }
 }
 
-WaveformView::WaveformView(UltimateMeterAudioProcessor& processor) : audioProcessor(processor), columns((size_t)maxColumns)
+WaveformView::WaveformView(UltimateMeterAudioProcessor& processor) :
+    audioProcessor(processor), columns((size_t)maxColumns), rawLeft((size_t)rawCapacity, 0.f), rawRight((size_t)rawCapacity, 0.f)
 {
     setOpaque(true);
     samples.setSize(2, maxSamplesPerUpdate);
@@ -49,15 +51,6 @@ void WaveformView::resized()
     plot = getLocalBounds().withTrimmedLeft(34).withTrimmedRight(34).withTrimmedTop(8).withTrimmedBottom(20);
 }
 
-void WaveformView::setSpan(float seconds)
-{
-    if (!juce::exactlyEqual(seconds, spanSeconds))
-    {
-        spanSeconds = seconds;
-        repaint();
-    }
-}
-
 void WaveformView::setSettings(const Settings& newSettings)
 {
     if (!(newSettings == settings))
@@ -65,12 +58,13 @@ void WaveformView::setSettings(const Settings& newSettings)
         // The time code changes in every frame, and is all that does, so only its corner is drawn again
         const bool onlyTime = newSettings.channels == settings.channels && newSettings.colours == settings.colours
             && newSettings.sweep == settings.sweep && newSettings.peakHistory == settings.peakHistory
-            && juce::exactlyEqual(newSettings.zoom, settings.zoom) && newSettings.timeCode == settings.timeCode;
+            && juce::exactlyEqual(newSettings.zoom, settings.zoom) && juce::exactlyEqual(newSettings.spanSeconds, settings.spanSeconds)
+            && newSettings.timeCode == settings.timeCode;
 
         settings = newSettings;
 
         if (onlyTime)
-            repaint(plot.withHeight(24).withWidth(220));
+            repaint(plot.withHeight(26).withWidth(220));
         else
             repaint();
     }
@@ -79,6 +73,7 @@ void WaveformView::setSettings(const Settings& newSettings)
 void WaveformView::clearHistory()
 {
     written = 0;
+    rawWritten = 0;
     minimum.fill(0.f);
     maximum.fill(0.f);
     sumSquares.fill(0.0);
@@ -103,6 +98,14 @@ juce::String WaveformView::formatTimeCode(double seconds)
     return juce::String::formatted("%02d:%02d:%02d.%03d", h, m, s, ms);
 }
 
+juce::String WaveformView::formatSpan(float seconds)
+{
+    if (seconds < 1.f)
+        return juce::String(juce::roundToInt(seconds * 1000.f)) + " ms";
+
+    return (juce::approximatelyEqual(seconds, std::round(seconds)) ? juce::String(juce::roundToInt(seconds)) : juce::String(seconds, 1)) + " s";
+}
+
 juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
 {
     // The bands of music are not equally strong: the lows carry most of the power. Each is weighed so that
@@ -120,22 +123,39 @@ juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
     return juce::Colour::fromFloatRGBA(0.18f + 0.82f * channel(r), 0.18f + 0.82f * channel(g), 0.18f + 0.82f * channel(b), 1.f);
 }
 
-void WaveformView::prepareFilters(double sampleRate)
+void WaveformView::prepareFilters(double newSampleRate)
 {
-    filterRate = sampleRate;
-    lowCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * lowCrossoverHz / sampleRate);
-    highCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * highCrossoverHz / sampleRate);
-    samplesPerColumn = sampleRate / (double)columnsPerSecond;
+    sampleRate = newSampleRate;
+    filterRate = newSampleRate;
+    lowCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * lowCrossoverHz / newSampleRate);
+    highCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * highCrossoverHz / newSampleRate);
+    samplesPerColumn = newSampleRate / (double)columnsPerSecond;
+}
+
+double WaveformView::rawMaxSpan() const
+{
+    // The samples that are kept, less what one update may add and a margin
+    return ((double)rawCapacity - 4.0 * maxSamplesPerUpdate) / sampleRate;
+}
+
+void WaveformView::pushRaw(float left, float right)
+{
+    const auto index = (size_t)(rawWritten & (juce::uint64)(rawCapacity - 1));
+    rawLeft[index] = left;
+    rawRight[index] = right;
+    ++rawWritten;
 }
 
 void WaveformView::addSample(float left, float right)
 {
+    pushRaw(left, right);
+
     const std::array<float, numSignals> values { left, right, 0.5f * (left + right), 0.5f * (left - right) };
 
     for (size_t i = 0; i < values.size(); ++i)
     {
-        minimum[i] = juce::jmin(minimum[i], values[i]);
-        maximum[i] = juce::jmax(maximum[i], values[i]);
+        minimum[i] = countInColumn == 0 ? values[i] : juce::jmin(minimum[i], values[i]);
+        maximum[i] = countInColumn == 0 ? values[i] : juce::jmax(maximum[i], values[i]);
         sumSquares[i] += (double)values[i] * (double)values[i];
     }
 
@@ -186,9 +206,9 @@ void WaveformView::finishColumn()
 void WaveformView::update()
 {
     auto& ringBuffer = audioProcessor.sampleRingBuffer;
-    const double sampleRate = audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0;
-    if (!juce::approximatelyEqual(sampleRate, filterRate))
-        prepareFilters(sampleRate);
+    const double rate = audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0;
+    if (!juce::approximatelyEqual(rate, filterRate))
+        prepareFilters(rate);
 
     const auto totalWritten = ringBuffer.getTotalWritten();
 
@@ -214,12 +234,18 @@ void WaveformView::update()
 
     if (numNew > (juce::uint64)numSamples)
     {
-        double skipped = (double)(numNew - (juce::uint64)numSamples) + phase;
+        const auto skippedSamples = numNew - (juce::uint64)numSamples;
+        const auto numZeros = std::min<juce::uint64>(skippedSamples, (juce::uint64)rawCapacity);
+        for (juce::uint64 i = 0; i < numZeros; ++i)
+            pushRaw(0.f, 0.f);
+
+        double skipped = (double)skippedSamples + phase;
         while (skipped >= samplesPerColumn)
         {
             skipped -= samplesPerColumn;
             minimum.fill(0.f);
             maximum.fill(0.f);
+            countInColumn = 0;
             finishColumn();
         }
         phase = skipped;
@@ -244,37 +270,243 @@ void WaveformView::update()
 }
 
 //==============================================================================
-// The lens at the corner of the plot: a minus and a plus, with the zoom between them
-juce::Rectangle<int> WaveformView::lensArea() const
+// The pixels of the picture, from the newest
+void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan) const
 {
-    return juce::Rectangle<int>(104, 22).withRightX(plot.getRight() - 6).withY(plot.getY() + 5);
+    bins.clear();
+    const int width = juce::jmax(1, plot.getWidth());
+    const double span = (double)settings.spanSeconds;
+
+    // The span of time is first compared with what the samples as they came can cover
+    if (span <= rawMaxSpan() && rawWritten > 0)
+    {
+        // One bin a pixel. A bin is a stretch of samples, whose edges are at fixed places in the count of samples, so that
+        // what a bin holds does not change as the picture scrolls.
+        const double samplesPerBin = span * sampleRate / (double)width;
+        binWidth = 1.0;
+        binsInSpan = width;
+
+        const auto newestSample = (juce::int64)rawWritten - 1;
+        const auto oldestSample = std::max<juce::int64>(0, (juce::int64)rawWritten - rawCapacity + 4096);
+        const auto newestBin = (juce::int64)std::floor((double)newestSample / samplesPerBin);
+        const auto newestBinStart = (juce::int64)std::floor((double)newestBin * samplesPerBin);
+        const double filled = (double)(newestSample - newestBinStart + 1) / samplesPerBin;
+        newestRight = (double)plot.getRight() + (1.0 - juce::jmin(1.0, filled)) * binWidth;
+
+        const auto columnsNewest = (juce::int64)written - 1;
+        const auto columnsOldest = std::max<juce::int64>(0, (juce::int64)written - maxColumns);
+        constexpr int mask = rawCapacity - 1;
+
+        for (int b = 0; b < width + 2; ++b)
+        {
+            const auto index = newestBin - b;
+            if (index < 0)
+                break;
+
+            auto start = (juce::int64)std::floor((double)index * samplesPerBin);
+            auto end = std::min(newestSample, (juce::int64)std::floor((double)(index + 1) * samplesPerBin) - 1);
+            if (end < oldestSample)
+                break;
+
+            start = std::max(start, oldestSample);
+            end = std::max(end, start);
+
+            Bin bin;
+            bin.index = index;
+            bin.lowest.fill(1.0e9f);
+            bin.highest.fill(-1.0e9f);
+
+            for (auto s = start; s <= end; ++s)
+            {
+                const float l = rawLeft[(size_t)(s & mask)], r = rawRight[(size_t)(s & mask)];
+                const std::array<float, numSignals> values { l, r, 0.5f * (l + r), 0.5f * (l - r) };
+                for (size_t i = 0; i < values.size(); ++i)
+                {
+                    bin.lowest[i] = juce::jmin(bin.lowest[i], values[i]);
+                    bin.highest[i] = juce::jmax(bin.highest[i], values[i]);
+                    bin.meanSquare[i] += values[i] * values[i];
+                }
+            }
+
+            const float count = (float)(end - start + 1);
+            for (auto& value : bin.meanSquare)
+                value /= count;
+
+            // The colours come from the columns that cover the same time
+            const auto firstColumn = std::max(columnsOldest, (juce::int64)((double)start / samplesPerColumn));
+            const auto lastColumn = std::min(columnsNewest, (juce::int64)((double)end / samplesPerColumn));
+            if (lastColumn >= firstColumn)
+            {
+                const auto stride = std::max<juce::int64>(1, (lastColumn - firstColumn) / 8);
+                int used = 0;
+                for (auto c = firstColumn; c <= lastColumn; c += stride)
+                {
+                    const auto& column = columns[(size_t)(c % maxColumns)];
+                    bin.low += column.low;
+                    bin.mid += column.mid;
+                    bin.high += column.high;
+                    ++used;
+                }
+                bin.low /= (float)used;
+                bin.mid /= (float)used;
+                bin.high /= (float)used;
+            }
+
+            bins.push_back(bin);
+        }
+
+        return;
+    }
+
+    // Further out, the columns: a bin of k columns is about a pixel wide
+    const int spanColumns = juce::jmax(1, juce::roundToInt(span * columnsPerSecond));
+    const double pixelsPerColumn = (double)width / (double)spanColumns;
+    const int k = juce::jmax(1, juce::roundToInt((double)spanColumns / (double)width));
+    binWidth = pixelsPerColumn * k;
+    binsInSpan = (spanColumns + k - 1) / k;
+
+    if (written == 0)
+        return;
+
+    const auto newest = (juce::int64)written - 1;
+    const auto oldest = std::max<juce::int64>(0, (juce::int64)written - maxColumns);
+    const int filled = (int)(newest % k) + 1;
+    const auto newestBinStart = newest - filled + 1;
+    newestRight = (double)plot.getRight() + (double)(k - filled) * pixelsPerColumn;
+
+    const int numBins = (int)(((double)width + binWidth) / binWidth) + 2;
+
+    for (int b = 0; b < numBins; ++b)
+    {
+        const auto start = newestBinStart - (juce::int64)b * k;
+        const auto end = std::min<juce::int64>(newest, start + k - 1);
+        if (end < oldest || start + k - 1 < 0)
+            break;
+
+        Bin bin;
+        bin.index = start / k;
+        bin.lowest.fill(1.0e9f);
+        bin.highest.fill(-1.0e9f);
+        int count = 0;
+
+        for (auto index = std::max<juce::int64>(start, oldest); index <= end; ++index)
+        {
+            const auto& column = columns[(size_t)(index % maxColumns)];
+            for (size_t i = 0; i < numSignals; ++i)
+            {
+                bin.lowest[i] = juce::jmin(bin.lowest[i], column.minimum[i]);
+                bin.highest[i] = juce::jmax(bin.highest[i], column.maximum[i]);
+                bin.meanSquare[i] += column.rms[i] * column.rms[i];
+            }
+
+            bin.low += column.low;
+            bin.mid += column.mid;
+            bin.high += column.high;
+            ++count;
+        }
+
+        if (count == 0)
+            continue;
+
+        for (auto& value : bin.meanSquare)
+            value /= (float)count;
+
+        bin.low /= (float)count;
+        bin.mid /= (float)count;
+        bin.high /= (float)count;
+        bins.push_back(bin);
+    }
+}
+
+//==============================================================================
+// The lenses at the corner of the plot, each a minus, a value, and a plus
+juce::Rectangle<int> WaveformView::controlArea(int control) const
+{
+    return juce::Rectangle<int>(controlWidth, controlHeight).withRightX(plot.getRight() - 6 - control * 0 - (control == 0 ? 0 : controlWidth + 8)).withY(plot.getY() + 5);
+}
+
+void WaveformView::hitTestControl(juce::Point<int> position, int& control, int& part) const
+{
+    control = -1;
+    part = 0;
+
+    for (int c = 0; c < numControls; ++c)
+    {
+        const auto area = controlArea(c);
+        if (area.contains(position))
+        {
+            control = c;
+            part = position.x < area.getX() + buttonWidth ? -1 : position.x >= area.getRight() - buttonWidth ? 1 : 0;
+            return;
+        }
+    }
 }
 
 void WaveformView::mouseMove(const juce::MouseEvent& e)
 {
-    const auto area = lensArea();
-    int hover = 0;
-    if (area.contains(e.getPosition()))
-        hover = e.x < area.getX() + 38 ? -1 : e.x > area.getRight() - 38 ? 1 : 0;
+    int control, part;
+    hitTestControl(e.getPosition(), control, part);
 
-    if (hover != lensHover)
+    if (control != hoverControl || part != hoverPart)
     {
-        lensHover = hover;
-        setMouseCursor(hover != 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        repaint(area);
+        hoverControl = control;
+        hoverPart = part;
+        setMouseCursor(control >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint(controlArea(0).getUnion(controlArea(1)).expanded(2));
+    }
+}
+
+void WaveformView::mouseExit(const juce::MouseEvent&)
+{
+    if (hoverControl >= 0)
+    {
+        hoverControl = -1;
+        hoverPart = 0;
+        repaint(controlArea(0).getUnion(controlArea(1)).expanded(2));
     }
 }
 
 void WaveformView::mouseDown(const juce::MouseEvent& e)
 {
-    const auto area = lensArea();
-    if (!area.contains(e.getPosition()) || !onZoomStep)
+    int control, part;
+    hitTestControl(e.getPosition(), control, part);
+    if (control < 0)
         return;
 
-    if (e.x < area.getX() + 38)
-        onZoomStep(-1);
-    else if (e.x > area.getRight() - 38)
-        onZoomStep(1);
+    const bool coarse = e.mods.isShiftDown();
+
+    if (control == 0)
+    {
+        if (part != 0 && onVerticalStep)
+            onVerticalStep(part, coarse);
+        else if (part == 0 && onVerticalReset)
+            onVerticalReset();
+    }
+    else
+    {
+        if (part != 0 && onHorizontalStep)
+            onHorizontalStep(part, coarse);
+        else if (part == 0 && onHorizontalReset)
+            onHorizontalReset();
+    }
+}
+
+void WaveformView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    const int step = wheel.deltaY > 0.f ? 1 : wheel.deltaY < 0.f ? -1 : 0;
+    if (step == 0)
+        return;
+
+    // The wheel zooms the amplitude, and with the control or command key, the time
+    if (e.mods.isCtrlDown() || e.mods.isCommandDown())
+    {
+        if (onHorizontalStep)
+            onHorizontalStep(step, false);
+    }
+    else if (onVerticalStep)
+    {
+        onVerticalStep(step, false);
+    }
 }
 
 //==============================================================================
@@ -291,7 +523,7 @@ void WaveformView::paint(juce::Graphics& g)
 
     // The scale of a lane runs from silence in its middle to full scale, times the zoom, at its edges
     auto laneArea = [&](int lane) { return juce::Rectangle<float>((float)plot.getX(), (float)plot.getY() + (float)lane * laneHeight, (float)plot.getWidth(), laneHeight); };
-    auto halfOf = [&](int) { return 0.5f * laneHeight - 2.f; };
+    const float half = 0.5f * laneHeight - 2.f;
 
     // Lines for full scale, -6 and -12 dB, above and below the middle line of every lane, which is silence
     g.setFont(Theme::font(10.5f));
@@ -299,12 +531,11 @@ void WaveformView::paint(juce::Graphics& g)
     {
         const auto area = laneArea(lane);
         const float midY = area.getCentreY();
-        const float half = halfOf(lane);
 
         for (float gain : { 1.f, 0.5f, 0.25f })
         {
             const float h = half * gain * settings.zoom;
-            if (h > half + 0.5f)
+            if (h > half + 0.5f || h < 6.f)
                 continue;
 
             g.setColour(juce::exactlyEqual(gain, 1.f) ? Theme::gridStrong : Theme::grid);
@@ -333,104 +564,89 @@ void WaveformView::paint(juce::Graphics& g)
         }
     }
 
-    if (written > 0)
+    // The pixels of the picture
+    std::vector<Bin> bins;
+    double newestRight = (double)plot.getRight(), binWidth = 1.0;
+    int binsInSpan = plot.getWidth();
+    buildBins(bins, newestRight, binWidth, binsInSpan);
+
+    if (!bins.empty())
     {
         juce::Graphics::ScopedSaveState state(g);
         g.reduceClipRegion(plot.expanded(0, 2));
 
-        // A bin of k columns is about a pixel wide. Bins are tied to the absolute number of the column, so that
-        // an old bin always holds the same columns and does not change as the picture scrolls, and the newest
-        // bin's growth is shown as a smooth shift of the whole picture.
-        const int spanColumns = juce::jmax(1, juce::roundToInt(spanSeconds * (float)columnsPerSecond));
-        const float pixelsPerColumn = (float)plot.getWidth() / (float)spanColumns;
-        const int k = juce::jmax(1, juce::roundToInt((float)spanColumns / (float)plot.getWidth()));
-        const float binWidth = pixelsPerColumn * (float)k;
-
-        const auto newest = (juce::int64)written - 1;
-        const auto oldest = std::max<juce::int64>(0, (juce::int64)written - maxColumns);
-        const int filled = (int)(newest % k) + 1;
-        const auto newestBinStart = newest - filled + 1;
-        const float firstRight = (float)plot.getRight() + (float)(k - filled) * pixelsPerColumn;
+        // The colours of the bands change slowly, whatever the bins do: each takes the mean of its neighbours, so that
+        // the colour belongs to a stretch of sound and does not flicker with every transient
+        const int numBins = (int)bins.size();
+        std::vector<float> smoothLow((size_t)numBins), smoothMid((size_t)numBins), smoothHigh((size_t)numBins);
+        const int radius = juce::jlimit(2, 8, juce::roundToInt(4.0 / binWidth));
+        for (int i = 0; i < numBins; ++i)
+        {
+            float low = 0.f, mid = 0.f, high = 0.f;
+            int count = 0;
+            for (int j = juce::jmax(0, i - radius); j <= juce::jmin(numBins - 1, i + radius); ++j)
+            {
+                low += bins[(size_t)j].low;
+                mid += bins[(size_t)j].mid;
+                high += bins[(size_t)j].high;
+                ++count;
+            }
+            smoothLow[(size_t)i] = low / (float)count;
+            smoothMid[(size_t)i] = mid / (float)count;
+            smoothHigh[(size_t)i] = high / (float)count;
+        }
 
         // The colours of a level, for the colour map: from the foot of the scale to full scale
         const auto levelGradient = Theme::levelColours(minDb, 0.f, -6.f, -1.f, { 0.f, 0.f }, { 0.f, 1.f });
 
         std::vector<juce::Path> bandPaths(3);
         std::array<float, 3> smoothedProportion {};
-        bool hasSmoothed = false;
         std::array<bool, 3> pathStarted { false, false, false };
+        bool hasSmoothed = false;
 
-        const int numBins = settings.sweep ? (spanColumns + k - 1) / k : (int)(((float)plot.getWidth() + binWidth) / binWidth) + 2;
+        const int numToDraw = settings.sweep ? juce::jmin(numBins, binsInSpan) : numBins;
 
-        for (int bin = 0; bin < numBins; ++bin)
+        for (int b = 0; b < numToDraw; ++b)
         {
-            const auto start = newestBinStart - (juce::int64)bin * k;
-            const auto end = std::min<juce::int64>(newest, start + k - 1);
-            if (end < oldest || start + k - 1 < 0)
-                break;
+            const auto& bin = bins[(size_t)b];
 
             // Where the bin goes: in a scrolling picture, from the right edge; in a sweep, at its place in the span
-            float right;
+            double right;
             if (settings.sweep)
-                right = (float)plot.getX() + (float)(((start % spanColumns) + spanColumns) % spanColumns + k) * pixelsPerColumn;
+                right = (double)plot.getX() + (double)(((bin.index % binsInSpan) + binsInSpan) % binsInSpan + 1) * binWidth;
             else
-                right = firstRight - (float)bin * binWidth;
+                right = newestRight - (double)b * binWidth;
 
-            if (right < (float)plot.getX() || right - binWidth > (float)plot.getRight() + 1.f)
+            if (right < (double)plot.getX() || right - binWidth > (double)plot.getRight() + 1.0)
                 continue;
 
-            float low = 0.f, mid = 0.f, high = 0.f;
-            int count = 0;
-
-            // One pass over the columns of the bin, for every lane
-            std::array<std::array<Shape, 2>, 2> perLane {}; // [lane][signal]
-            for (auto index = std::max<juce::int64>(start, oldest); index <= end; ++index)
-            {
-                const auto& column = columns[(size_t)(index % maxColumns)];
-
-                for (int lane = 0; lane < numLanes; ++lane)
-                    for (size_t part = 0; part < 2; ++part)
-                    {
-                        const int signal = lanes[(size_t)lane].signals[part];
-                        if (signal < 0)
-                            continue;
-
-                        auto& shape = perLane[(size_t)lane][part];
-                        shape.lowest = juce::jmin(shape.lowest, column.minimum[(size_t)signal]);
-                        shape.highest = juce::jmax(shape.highest, column.maximum[(size_t)signal]);
-                        shape.rmsSquares += column.rms[(size_t)signal] * column.rms[(size_t)signal];
-                    }
-
-                low += column.low;
-                mid += column.mid;
-                high += column.high;
-                ++count;
-            }
-
-            if (count == 0)
-                continue;
-
-            const float x = right - binWidth;
-            const float width = binWidth + 0.5f;
+            const float x = (float)(right - binWidth);
+            const float width = (float)binWidth + 0.4f;
 
             for (int lane = 0; lane < numLanes; ++lane)
             {
-                // The lane takes the extremes of its signals, and the RMS of the two together when it has two
+                // The lane takes the extremes of its signals, and the RMS of the signals together
                 Shape shape;
+                shape.lowest = 1.0e9f;
+                shape.highest = -1.0e9f;
                 int parts = 0;
                 for (size_t part = 0; part < 2; ++part)
-                    if (lanes[(size_t)lane].signals[part] >= 0)
-                    {
-                        shape.lowest = juce::jmin(shape.lowest, perLane[(size_t)lane][part].lowest);
-                        shape.highest = juce::jmax(shape.highest, perLane[(size_t)lane][part].highest);
-                        shape.rmsSquares += perLane[(size_t)lane][part].rmsSquares;
-                        ++parts;
-                    }
+                {
+                    const int signal = lanes[(size_t)lane].signals[part];
+                    if (signal < 0)
+                        continue;
 
-                const float rmsGain = std::sqrt(shape.rmsSquares / (float)(count * juce::jmax(1, parts)));
+                    shape.lowest = juce::jmin(shape.lowest, bin.lowest[(size_t)signal]);
+                    shape.highest = juce::jmax(shape.highest, bin.highest[(size_t)signal]);
+                    shape.meanSquare += bin.meanSquare[(size_t)signal];
+                    ++parts;
+                }
+                shape.meanSquare /= (float)juce::jmax(1, parts);
+
+                const float rmsGain = std::sqrt(shape.meanSquare);
                 const float peak = juce::jmax(shape.highest, -shape.lowest);
 
-                // The colour of the column
+                // The colour of the pixel
                 juce::Colour colour;
                 switch (settings.colours)
                 {
@@ -441,30 +657,30 @@ void WaveformView::paint(juce::Graphics& g)
                         colour = levelGradient.getColourAtPosition(juce::jlimit(0.0, 1.0, (double)(juce::Decibels::gainToDecibels(peak, -200.f) - minDb) / (double)(0.f - minDb)));
                         break;
                     default:
-                        colour = colourOfBands(low, mid, high);
+                        colour = colourOfBands(smoothLow[(size_t)b], smoothMid[(size_t)b], smoothHigh[(size_t)b]);
 
-                        // A peak at full scale turns the column red
+                        // A peak at full scale turns the pixel red
                         colour = colour.interpolatedWith(Theme::over, 0.85f * juce::jlimit(0.f, 1.f, (peak - 0.9f) / 0.08f));
                         break;
                 }
 
                 const auto area = laneArea(lane);
                 const float midY = area.getCentreY();
-                const float half = halfOf(lane) * settings.zoom;
+                const float scale = half * settings.zoom;
 
-                const float top = midY - shape.highest * half;
-                const float bottom = midY - shape.lowest * half;
+                const float top = midY - shape.highest * scale;
+                const float bottom = midY - shape.lowest * scale;
 
                 // The outer shape is the highest and lowest samples, a little dimmer, and the core is the RMS level
                 g.setColour(colour.withMultipliedBrightness(0.78f));
                 g.fillRect(x, top, width, juce::jmax(1.f, bottom - top));
 
-                const float core = rmsGain * half;
+                const float core = juce::jmin(rmsGain * scale, juce::jmax(0.f, juce::jmin(midY - top, bottom - midY)));
                 g.setColour(colour.brighter(0.2f));
                 g.fillRect(x, midY - core, width, juce::jmax(1.f, 2.f * core));
 
                 // A sample at full scale or beyond is a clip: its end is marked in red
-                const float clipLevel = 0.999f;
+                constexpr float clipLevel = 0.999f;
                 if (shape.highest >= clipLevel)
                 {
                     g.setColour(Theme::over);
@@ -476,40 +692,33 @@ void WaveformView::paint(juce::Graphics& g)
                     g.fillRect(x, bottom - 3.f, width, 3.f);
                 }
 
-                // The history of the levels of the three bands, as thin lines over the lane
-                if (settings.peakHistory)
+                // The history of the levels of the three bands, as thin lines over the first lane
+                if (settings.peakHistory && lane == 0)
                 {
-                    const std::array<float, 3> powers { low / (float)count, mid / (float)count, high / (float)count };
+                    const std::array<float, 3> powers { smoothLow[(size_t)b], smoothMid[(size_t)b], smoothHigh[(size_t)b] };
                     for (size_t band = 0; band < 3; ++band)
                     {
                         // The level of the band, from -60 dB at the bottom of the lane to 0 dB at its top
                         const float db = 10.f * std::log10(powers[band] + 1.0e-12f);
                         float proportion = juce::jlimit(0.f, 1.f, (db + 60.f) / 60.f);
 
-                        // The history is smoothed along the time axis, so that it reads as a level and not as every transient
-                        if (lane == 0)
-                        {
-                            proportion = hasSmoothed ? smoothedProportion[band] + 0.12f * (proportion - smoothedProportion[band]) : proportion;
-                            smoothedProportion[band] = proportion;
-                            hasSmoothed = hasSmoothed || band == 2;
-                        }
+                        proportion = hasSmoothed ? smoothedProportion[band] + 0.12f * (proportion - smoothedProportion[band]) : proportion;
+                        smoothedProportion[band] = proportion;
 
                         const float y = area.getBottom() - 3.f - proportion * (area.getHeight() - 8.f);
+                        auto& path = bandPaths[band];
 
-                        if (lane == 0)
+                        if (!pathStarted[band])
                         {
-                            auto& path = bandPaths[band];
-                            if (!pathStarted[band])
-                            {
-                                path.startNewSubPath(x + 0.5f * binWidth, y);
-                                pathStarted[band] = true;
-                            }
-                            else
-                            {
-                                path.lineTo(x + 0.5f * binWidth, y);
-                            }
+                            path.startNewSubPath(x + 0.5f * (float)binWidth, y);
+                            pathStarted[band] = true;
+                        }
+                        else
+                        {
+                            path.lineTo(x + 0.5f * (float)binWidth, y);
                         }
                     }
+                    hasSmoothed = true;
                 }
             }
         }
@@ -527,29 +736,37 @@ void WaveformView::paint(juce::Graphics& g)
         // In a sweep, the place that is being written now
         if (settings.sweep)
         {
-            const float nowX = (float)plot.getX() + (float)(newest % spanColumns) * pixelsPerColumn;
+            const double nowX = (double)plot.getX() + (double)((bins.front().index % binsInSpan) + 1) * binWidth;
             g.setColour(juce::Colours::white.withAlpha(0.6f));
-            g.fillRect(nowX, (float)plot.getY(), 1.f, (float)plot.getHeight());
+            g.fillRect((float)nowX, (float)plot.getY(), 1.f, (float)plot.getHeight());
         }
     }
 
-    // The time axis: "now" at the right edge when scrolling, and seconds from the left in a sweep
-    if (settings.sweep)
+    // The time axis: "now" at the right edge when scrolling, and the time from the left in a sweep
     {
+        const double span = (double)settings.spanSeconds;
+        double step = 10.0;
+        for (double candidate : { 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0 })
+            if (span / candidate <= 8.0)
+            {
+                step = candidate;
+                break;
+            }
+
         g.setFont(Theme::font(10.5f));
-        const int step = spanSeconds <= 30.f ? 5 : 10;
-        for (int seconds = 0; seconds <= juce::roundToInt(spanSeconds); seconds += step)
+        for (double t = 0.0; t <= span + 1.0e-9; t += step)
         {
-            const float x = (float)plot.getX() + (float)plot.getWidth() * (float)seconds / spanSeconds;
+            const float x = settings.sweep ? (float)plot.getX() + (float)plot.getWidth() * (float)(t / span)
+                                           : (float)plot.getRight() - (float)plot.getWidth() * (float)(t / span);
+
             g.setColour(juce::Colours::white.withAlpha(0.07f));
             g.fillRect(x, (float)plot.getY(), 1.f, (float)plot.getHeight());
+
             g.setColour(Theme::textDim);
-            g.drawText(juce::String(seconds) + " s", juce::Rectangle<float>(50.f, 14.f).withCentre({ juce::jlimit((float)plot.getX() + 16.f, (float)plot.getRight() - 12.f, x), (float)plot.getBottom() + 10.f }), juce::Justification::centred);
+            const auto label = formatSpan((float)t);
+            const auto text = settings.sweep ? label : (t < 1.0e-9 ? juce::String("now") : juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")) + label);
+            g.drawText(text, juce::Rectangle<float>(56.f, 14.f).withCentre({ juce::jlimit((float)plot.getX() + 18.f, (float)plot.getRight() - 14.f, x), (float)plot.getBottom() + 10.f }), juce::Justification::centred);
         }
-    }
-    else
-    {
-        Timeline::drawTimeAxis(g, plot, spanSeconds);
     }
 
     // The time code of the host, top left
@@ -560,32 +777,45 @@ void WaveformView::paint(juce::Graphics& g)
         g.drawText(formatTimeCode(settings.hostSeconds), juce::Rectangle<int>(plot.getX() + 10, plot.getY() + 4, 200, 20), juce::Justification::centredLeft);
     }
 
-    // The lens: a minus, a magnifying glass with the zoom beside it, and a plus
+    // The lenses: for the amplitude, and for the time
+    for (int control = 0; control < numControls; ++control)
     {
-        const auto area = lensArea();
-        g.setColour(Theme::panel.withAlpha(0.85f));
+        const auto area = controlArea(control);
+        g.setColour(Theme::panel.withAlpha(0.88f));
         g.fillRoundedRectangle(area.toFloat(), 4.f);
         g.setColour(Theme::panelEdge);
         g.drawRoundedRectangle(area.toFloat().reduced(0.5f), 4.f, 1.f);
 
-        auto icon = area.toFloat().reduced(4.f, 0.f);
-        const auto minus = icon.removeFromLeft(24.f);
-        const auto plus = icon.removeFromRight(24.f);
+        auto icon = area.toFloat();
+        const auto minus = icon.removeFromLeft((float)buttonWidth);
+        const auto plus = icon.removeFromRight((float)buttonWidth);
+        const bool hovered = hoverControl == control;
 
         g.setFont(Theme::font(15.f, true));
-        g.setColour(lensHover < 0 ? juce::Colours::white : Theme::text);
+        g.setColour(hovered && hoverPart < 0 ? juce::Colours::white : Theme::text);
         g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")), minus, juce::Justification::centred);
-        g.setColour(lensHover > 0 ? juce::Colours::white : Theme::text);
+        g.setColour(hovered && hoverPart > 0 ? juce::Colours::white : Theme::text);
         g.drawText("+", plus, juce::Justification::centred);
 
-        // The glass
+        // The arrows say which way the lens works: up and down for the amplitude, left and right for the time
         g.setColour(Theme::textDim);
-        const auto glass = juce::Rectangle<float>(8.f, 8.f).withCentre({ icon.getX() + 7.f, icon.getCentreY() - 1.f });
-        g.drawEllipse(glass, 1.4f);
-        g.drawLine(glass.getRight() - 1.f, glass.getBottom() - 1.f, glass.getRight() + 3.f, glass.getBottom() + 3.f, 1.6f);
+        const auto centre = icon.getCentre().translated(-icon.getWidth() * 0.5f + 7.f, 0.f);
+        juce::Path arrows;
+        if (control == 0)
+        {
+            arrows.addTriangle(centre.x, centre.y - 6.f, centre.x - 3.5f, centre.y - 2.f, centre.x + 3.5f, centre.y - 2.f);
+            arrows.addTriangle(centre.x, centre.y + 6.f, centre.x - 3.5f, centre.y + 2.f, centre.x + 3.5f, centre.y + 2.f);
+        }
+        else
+        {
+            arrows.addTriangle(centre.x - 6.f, centre.y, centre.x - 2.f, centre.y - 3.5f, centre.x - 2.f, centre.y + 3.5f);
+            arrows.addTriangle(centre.x + 6.f, centre.y, centre.x + 2.f, centre.y - 3.5f, centre.x + 2.f, centre.y + 3.5f);
+        }
+        g.fillPath(arrows);
 
         g.setFont(Theme::font(11.f));
-        g.setColour(Theme::text);
-        g.drawText(juce::String(settings.zoom, settings.zoom < 1.f ? 1 : 0) + "x", icon.withTrimmedLeft(17.f), juce::Justification::centredLeft);
+        g.setColour(hovered && hoverPart == 0 ? juce::Colours::white : Theme::text);
+        const auto value = control == 0 ? juce::String(settings.zoom, 1) + "x" : formatSpan(settings.spanSeconds);
+        g.drawText(value, icon.withTrimmedLeft(16.f), juce::Justification::centred);
     }
 }

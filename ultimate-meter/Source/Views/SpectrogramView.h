@@ -33,10 +33,6 @@ public:
 
     void mouseMove(const juce::MouseEvent&) override;
 
-    // A right click (or a click with the control key) asks for the menu of colours
-    void mouseDown(const juce::MouseEvent&) override;
-    std::function<void()> onContextMenu;
-
     // Chooses the colours, by the index of Parameters::spectrogramColourNames
     void setPalette(int index);
     void mouseExit(const juce::MouseEvent&) override;

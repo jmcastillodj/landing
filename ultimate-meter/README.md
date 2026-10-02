@@ -8,7 +8,8 @@ vista Waveform coloreada por frecuencias y modo **Multi** (varias vistas a la ve
 
 ## Novedades respecto a Grisey
 
-- **Waveform en tiempo real** con muestras reales (máximo y mínimo con signo, escala lineal): canales L / R / M / S o dos carriles,
+- **Opciones por vista**: clic derecho sobre cualquier vista (o el botón Options, abajo a la izquierda) abre el menú con sus opciones.
+- **Waveform en tiempo real** con muestras reales (máximo y mínimo con signo, escala lineal): zoom cercano que muestra la onda real muestra a muestra, zoom vertical de 0,1 en 0,1 y zoom horizontal propio; canales L / R / M / S o dos carriles,
   colores Multi-band / Static / Color map, historial de picos, barrido estático, time code del DAW y lupa de zoom vertical (marca el clipping en rojo).
 - **Multi-vista**: varias vistas a la vez en filas configurables (menú Layout), con divisores arrastrables; se conservan los tamaños.
 - **Spectrum** en curva o en barras (16 a 96), con velocidad, peak hold y curvas de referencia (ruido rosa, blanco, marrón, mezcla típica...).

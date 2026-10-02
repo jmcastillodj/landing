@@ -38,28 +38,36 @@ void GoniometerView::resized()
     isLit = false;
     hasLastPoint = false;
 
-    // The knob stands in a corner, the first of the four that the circle and its labels do not reach.
-    // In a view too small for any of them it is out of the way altogether, rather than over the picture.
+    // The knob stands in a corner, the first of the four that the circle and its labels do not reach, in its full size
+    // or, if that does not fit, a smaller one. In a view too small for either it is out of the way altogether, rather
+    // than over the picture; the scale is in the menu of the view as well.
     {
         const int w = getWidth(), h = getHeight();
-        const std::array<juce::Rectangle<int>, 4> corners {
-            juce::Rectangle<int>(0, h - 128, 108, 128), juce::Rectangle<int>(0, 0, 108, 128),
-            juce::Rectangle<int>(w - 108, h - 128, 108, 128), juce::Rectangle<int>(w - 108, 0, 108, 128) };
-
         const auto centre = plot.getCentre().toFloat();
-        const float reach = 0.5f * (float)plot.getWidth() + 30.f; // the circle and the labels around it
+        const float reach = 0.5f * (float)plot.getWidth() + 28.f; // the circle and the labels around it
 
         bool placed = false;
-        for (const auto& corner : corners)
+        for (const auto size : { juce::Point<int>(108, 128), juce::Point<int>(76, 94) })
         {
-            const auto nearest = juce::Point<float>(juce::jlimit((float)corner.getX(), (float)corner.getRight(), centre.x),
-                                                    juce::jlimit((float)corner.getY(), (float)corner.getBottom(), centre.y));
-            if (corner.getWidth() > 0 && nearest.getDistanceFrom(centre) > reach)
+            const std::array<juce::Rectangle<int>, 4> corners {
+                juce::Rectangle<int>(0, h - size.y, size.x, size.y), juce::Rectangle<int>(0, 0, size.x, size.y),
+                juce::Rectangle<int>(w - size.x, h - size.y, size.x, size.y), juce::Rectangle<int>(w - size.x, 0, size.x, size.y) };
+
+            for (const auto& corner : corners)
             {
-                scaleKnob.setBounds(corner.reduced(4, 4));
-                placed = true;
-                break;
+                // The corner of the knob that is nearest to the middle of the circle must be outside it
+                const auto nearest = juce::Point<float>(juce::jlimit((float)corner.getX(), (float)corner.getRight(), centre.x),
+                                                        juce::jlimit((float)corner.getY(), (float)corner.getBottom(), centre.y));
+                if (nearest.getDistanceFrom(centre) > reach && w >= size.x && h >= size.y)
+                {
+                    scaleKnob.setBounds(corner.reduced(3, 3));
+                    placed = true;
+                    break;
+                }
             }
+
+            if (placed)
+                break;
         }
 
         scaleKnob.setVisible(placed);

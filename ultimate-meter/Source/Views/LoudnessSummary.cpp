@@ -15,7 +15,7 @@ void LoudnessSummary::update(const LoudnessMeter::Readings& readings, float maxT
 
     juce::String newDifference;
     if (hasIntegrated && targetLufs < 0.f)
-        newDifference = Theme::formatDb(readings.integrated - targetLufs, -200.f) + " LU to target";
+        newDifference = Theme::formatDb(readings.integrated - targetLufs, -200.f) + " LU to " + juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")) + juce::String(juce::roundToInt(std::abs(targetLufs))) + " LUFS";
 
     if (newIntegrated != integrated || newDifference != difference || newShortTerm != shortTerm
         || newRange != range || newTruePeak != truePeak || newIsOver != truePeakIsOver)
@@ -139,8 +139,9 @@ void LoudnessSummary::paint(juce::Graphics& g)
     g.setColour(Theme::textDim);
     g.drawText("LUFS", numberRow.removeFromTop(numberRow.getHeight() / 2 + 4), juce::Justification::bottomLeft);
     g.setFont(Theme::font(11.f));
-    g.setColour(Theme::text);
-    g.drawText(difference, numberRow.expanded(40, 0).withX(numberRow.getX()), juce::Justification::centredLeft);
+    g.setColour(targetHovered ? juce::Colours::white : Theme::text);
+    targetArea = numberRow.expanded(40, 0).withX(numberRow.getX());
+    g.drawText(difference.isEmpty() ? juce::String("no target (click)") : difference, targetArea, juce::Justification::centredLeft);
 
     // The other readings share a small table
     struct Row { const char* name; const juce::String& value; const char* unit; bool warn; };
@@ -176,6 +177,8 @@ void LoudnessSummary::mouseDown(const juce::MouseEvent& e)
 {
     if (titleArea.contains(e.getPosition()) && onTitleClicked)
         onTitleClicked();
+    else if (mode == Mode::loudness && targetArea.contains(e.getPosition()) && onTargetClicked)
+        onTargetClicked();
     else if (truePeakRow.contains(e.getPosition()) && onTruePeakClicked)
         onTruePeakClicked();
 }
@@ -184,21 +187,24 @@ void LoudnessSummary::mouseMove(const juce::MouseEvent& e)
 {
     const bool over = truePeakRow.contains(e.getPosition());
     const bool overTitle = titleArea.contains(e.getPosition());
-    if (over != truePeakHovered || overTitle != titleHovered)
+    const bool overTarget = mode == Mode::loudness && targetArea.contains(e.getPosition());
+    if (over != truePeakHovered || overTitle != titleHovered || overTarget != targetHovered)
     {
         truePeakHovered = over;
         titleHovered = overTitle;
-        setMouseCursor(over || overTitle ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        targetHovered = overTarget;
+        setMouseCursor(over || overTitle || overTarget ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
         repaint();
     }
 }
 
 void LoudnessSummary::mouseExit(const juce::MouseEvent&)
 {
-    if (truePeakHovered || titleHovered)
+    if (truePeakHovered || titleHovered || targetHovered)
     {
         truePeakHovered = false;
         titleHovered = false;
+        targetHovered = false;
         setMouseCursor(juce::MouseCursor::NormalCursor);
         repaint();
     }

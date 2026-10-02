@@ -260,7 +260,7 @@ void LoudnessView::paintHistory(juce::Graphics& g, juce::Rectangle<int> area)
             g.drawDashedLine({ plot.getX(), y, plot.getRight(), y }, dashes, 2, 1.2f);
 
             g.setFont(Theme::labelFont());
-            g.drawText("TARGET", plot.toNearestInt().withY(juce::roundToInt(y) + 2).withHeight(12).reduced(6, 0), juce::Justification::centredRight);
+            g.drawText("TARGET " + juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")) + juce::String(juce::roundToInt(std::abs(target))) + " LUFS", plot.toNearestInt().withY(juce::roundToInt(y) + 2).withHeight(12).reduced(6, 0), juce::Justification::centredRight);
         }
     }
 }

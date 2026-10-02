@@ -22,6 +22,9 @@ public:
     void setMode(Mode newMode);
     std::function<void()> onTitleClicked;
 
+    // A click on the distance to the target asks for the menu of targets
+    std::function<void()> onTargetClicked;
+
     // Shows the RMS levels of the two channels and the highest sample peak since the last reset, in decibels. Like
     // update(), only when a readout is due.
     void updateRms(float leftDb, float rightDb, float peakHoldDb, bool readoutDue);
@@ -41,13 +44,13 @@ public:
 
 private:
     Mode mode = Mode::loudness;
-    juce::Rectangle<int> titleArea;
+    juce::Rectangle<int> titleArea, targetArea;
     juce::String rmsLoudest, rmsLeft, rmsRight, peakHold;
     bool peakHoldIsOver = false;
     juce::String integrated, difference, shortTerm, range, truePeak;
     bool truePeakIsOver = false;
     juce::Rectangle<int> truePeakRow;
-    bool truePeakHovered = false, titleHovered = false;
+    bool truePeakHovered = false, titleHovered = false, targetHovered = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LoudnessSummary)
 };

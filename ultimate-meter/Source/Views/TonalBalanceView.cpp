@@ -9,10 +9,7 @@ namespace
     const juce::Colour targetColour { 0xff2ec4b6 };
     const juce::Colour measuredColour { 0xffe3eaf1 };
 
-    constexpr int menuIdBase = 100;
-    constexpr int menuLoadFile = 1;
-    constexpr int menuRemoveBase = 5000;
-}
+    }
 
 TonalBalanceView::TonalBalanceView(SpectrumSource& spectrumSource, juce::ValueTree& sessionState) : source(spectrumSource), state(sessionState)
 {
@@ -60,67 +57,58 @@ void TonalBalanceView::selectTarget(const juce::String& name)
     repaint();
 }
 
-void TonalBalanceView::showTargetMenu(juce::Component& attachTo)
+void TonalBalanceView::addTargetItems(juce::PopupMenu& menu)
 {
-    juce::PopupMenu menu;
-    menu.addSectionHeader("Target");
+    juce::Component::SafePointer<TonalBalanceView> safe(this);
 
-    bool addedCustomHeader = false;
-    for (int i = 0; i < (int)targets.size(); ++i)
-    {
-        if (!targets[(size_t)i].builtIn && !addedCustomHeader)
+    menu.addSectionHeader("Target");
+    for (auto& target : targets)
+        if (target.builtIn)
+            menu.addItem(target.name, true, target.name == targetName, [safe, name = target.name] { if (safe != nullptr) safe->selectTarget(name); });
+
+    bool hasCustom = false;
+    for (auto& target : targets)
+        if (!target.builtIn)
         {
-            menu.addSectionHeader("Your targets");
-            addedCustomHeader = true;
+            if (!hasCustom)
+            {
+                menu.addSectionHeader("Your targets");
+                hasCustom = true;
+            }
+
+            menu.addItem(target.name, true, target.name == targetName, [safe, name = target.name] { if (safe != nullptr) safe->selectTarget(name); });
         }
 
-        menu.addItem(menuIdBase + i, targets[(size_t)i].name, true, targets[(size_t)i].name == targetName);
-    }
-
     menu.addSectionHeader("Make a target");
-    menu.addItem(menuLoadFile, "From an audio file...");
+    menu.addItem("From an audio file...", [safe] { if (safe != nullptr) safe->chooseFile(); });
 
-    if (addedCustomHeader)
+    if (hasCustom)
     {
         juce::PopupMenu removeMenu;
-        for (int i = 0; i < (int)targets.size(); ++i)
-            if (!targets[(size_t)i].builtIn)
-                removeMenu.addItem(menuRemoveBase + i, targets[(size_t)i].name);
-
-        menu.addSubMenu("Remove", removeMenu);
-    }
-
-    menu.setLookAndFeel(&attachTo.getLookAndFeel());
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&attachTo).withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards),
-        [safe = juce::Component::SafePointer<TonalBalanceView>(this)](int result)
-        {
-            if (safe == nullptr || result == 0)
-                return;
-
-            if (result == menuLoadFile)
-            {
-                safe->chooseFile();
-            }
-            else if (result >= menuRemoveBase)
-            {
-                const auto index = (size_t)(result - menuRemoveBase);
-                if (index < safe->targets.size() && !safe->targets[index].builtIn)
+        for (auto& target : targets)
+            if (!target.builtIn)
+                removeMenu.addItem(target.name, [safe, name = target.name]
                 {
-                    const bool wasSelected = safe->targets[index].name == safe->targetName;
-                    safe->targets.erase(safe->targets.begin() + (std::ptrdiff_t)index);
+                    if (safe == nullptr)
+                        return;
+
+                    const bool wasSelected = safe->targetName == name;
+                    safe->targets.erase(std::remove_if(safe->targets.begin(), safe->targets.end(), [&](auto& t) { return !t.builtIn && t.name == name; }), safe->targets.end());
                     safe->saveCustomTargets();
                     if (wasSelected)
                         safe->selectTarget("Modern");
                     safe->repaint();
-                }
-            }
-            else if (result >= menuIdBase)
-            {
-                const auto index = (size_t)(result - menuIdBase);
-                if (index < safe->targets.size())
-                    safe->selectTarget(safe->targets[index].name);
-            }
-        });
+                });
+
+        menu.addSubMenu("Remove", removeMenu);
+    }
+}
+
+void TonalBalanceView::mouseDown(const juce::MouseEvent& e)
+{
+    // A click starts the average again. The secondary click is for the menu, which the editor shows.
+    if (!e.mods.isPopupMenu())
+        clearHistory();
 }
 
 void TonalBalanceView::chooseFile()
@@ -177,7 +165,7 @@ void TonalBalanceView::setFine(bool shouldBeFine)
     if (shouldBeFine != fine)
     {
         fine = shouldBeFine;
-        layout = TonalTargets::display(fine ? 1.f / 6.f : 0.5f);
+        layout = TonalTargets::display(fine ? 1.f / 3.f : 1.f);
         repaint();
     }
 }
@@ -241,7 +229,7 @@ float TonalBalanceView::xOf(double frequency) const
 
 float TonalBalanceView::yOf(float decibels) const
 {
-    return juce::jmap(juce::jlimit(-rangeDb, rangeDb, decibels), -rangeDb, rangeDb, (float)plot.getBottom(), (float)plot.getY());
+    return juce::jmap(juce::jlimit(bottomDb, topDb, decibels), bottomDb, topDb, (float)plot.getBottom(), (float)plot.getY());
 }
 
 juce::Path TonalBalanceView::bandPath(const std::vector<float>& low, const std::vector<float>& high) const
@@ -275,7 +263,10 @@ void TonalBalanceView::paint(juce::Graphics& g)
     if (plot.isEmpty())
         return;
 
-    // The grid: the frequencies, and a line for every 6 dB around the target
+    // The slope that is put back in the curves, at each of their points
+    auto shift = [](size_t point) { return naturalSlopeDbPerOctave * (float)std::log2(TonalTargets::frequencyOf((int)point) / 1000.0); };
+
+    // The grid: the frequencies, and a line for every 12 dB
     g.setFont(Theme::font(10.5f));
     for (double frequency : { 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0 })
     {
@@ -287,7 +278,7 @@ void TonalBalanceView::paint(juce::Graphics& g)
         g.drawText(label, juce::Rectangle<float>(40.f, 14.f).withCentre({ juce::jlimit((float)plot.getX() + 14.f, (float)plot.getRight() - 14.f, x), (float)plot.getBottom() + 11.f }), juce::Justification::centred);
     }
 
-    for (int db = -12; db <= 12; db += 6)
+    for (int db = -48; db <= 24; db += 12)
     {
         g.setColour(db == 0 ? Theme::gridStrong : Theme::grid);
         g.fillRect((float)plot.getX(), yOf((float)db), (float)plot.getWidth(), 1.f);
@@ -315,8 +306,8 @@ void TonalBalanceView::paint(juce::Graphics& g)
         std::vector<float> low(measured.size()), high(measured.size());
         for (size_t point = 0; point < measured.size(); ++point)
         {
-            low[point] = target->centre[point] - target->tolerance[point];
-            high[point] = target->centre[point] + target->tolerance[point];
+            low[point] = target->centre[point] - target->tolerance[point] + shift(point);
+            high[point] = target->centre[point] + target->tolerance[point] + shift(point);
         }
 
         const auto area = bandPath(low, high);
@@ -384,9 +375,9 @@ void TonalBalanceView::paint(juce::Graphics& g)
         {
             const float x = (float)plot.getX() + step * (float)point;
             if (point == 0)
-                line.startNewSubPath(x, yOf(measured[point]));
+                line.startNewSubPath(x, yOf(measured[point] + shift(point)));
             else
-                line.lineTo(x, yOf(measured[point]));
+                line.lineTo(x, yOf(measured[point] + shift(point)));
         }
 
         g.setColour(measuredColour.withAlpha(0.18f));
@@ -420,6 +411,11 @@ void TonalBalanceView::paint(juce::Graphics& g)
             g.drawText(Theme::formatDb(deviation) + " dB", area, juce::Justification::centred);
         }
     }
+
+    // A reminder of what a click does
+    g.setFont(Theme::labelFont());
+    g.setColour(Theme::textFaint);
+    g.drawText("CLICK TO START THE AVERAGE AGAIN", juce::Rectangle<int>(plot.getRight() - 300, plot.getBottom() - 20, 296, 16), juce::Justification::centredRight);
 
     // The name of the target, bottom right of the top bar
     g.setFont(Theme::labelFont());

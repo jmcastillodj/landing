@@ -154,7 +154,14 @@ void SpectrumView::paint(juce::Graphics& g)
     if (settings.hasReference)
     {
         g.setColour(Theme::text.withAlpha(0.75f));
-        g.drawText("REF: " + settings.referenceName, legend.withTrimmedLeft(10).withWidth(180), juce::Justification::centredLeft);
+        // The line has the slope of the reference with the tilt added, which is what the curves have, so a signal of that
+        // shape lies on it. The slope that is drawn is said, because it is not the reference's own when there is a tilt.
+        auto slopeText = [](float slope) { return (slope > 0.f ? "+" : slope < 0.f ? juce::String(juce::CharPointer_UTF8("\xe2\x88\x92")) : juce::String()) + juce::String(std::abs(slope), 1); };
+        const float drawn = settings.referenceSlopeDbPerOctave + settings.tiltDbPerOctave;
+        auto text = "REF: " + settings.referenceName + "  " + slopeText(settings.referenceSlopeDbPerOctave) + " dB/oct";
+        if (!juce::approximatelyEqual(settings.tiltDbPerOctave, 0.f))
+            text << "  (" << slopeText(drawn) << " shown with the tilt)";
+        g.drawText(text, legend.withTrimmedLeft(10).withWidth(420), juce::Justification::centredLeft);
     }
 
     if (hover.has_value())
@@ -464,9 +471,11 @@ void SpectrumView::mouseExit(const juce::MouseEvent&)
     }
 }
 
-void SpectrumView::mouseDown(const juce::MouseEvent&)
+void SpectrumView::mouseDown(const juce::MouseEvent& e)
 {
-    resetPeakHold();
+    // The secondary click is for the menu
+    if (!e.mods.isPopupMenu())
+        resetPeakHold();
 }
 
 void SpectrumView::resetPeakHold()

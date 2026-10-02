@@ -75,6 +75,10 @@ private:
     void rebuildMultiLayout();
     void layoutViews();
     void saveMultiState();
+
+    // The options of a view, which are in a menu: on the secondary click of the view, and under the Options button
+    void buildViewMenu(juce::PopupMenu& menu, int viewId);
+    void mouseDown(const juce::MouseEvent&) override;
     void captureSizes();
 
     // Draws the header and the bottom bar, whose raised parts meet the recessed ones in S-shaped shoulders
@@ -97,7 +101,6 @@ private:
     TabBar tabs;
     TextButtonQuiet multiButton { "Multi" };
     TextButtonQuiet arrangeButton { "Layout" };
-    juce::Button* targetButton = nullptr;
 
 
     // The views, of which one is showing. The spectrum and the spectrogram draw the same spectra.
@@ -116,14 +119,14 @@ private:
     CorrelationBar correlationBar;
 
     // The bottom bar
-    ControlBar controlBar;
     SettingsButton meterSettingsButton { "Meters" };
+    SettingsButton optionsButton { "Options" };
 
     // Starts every measurement again. It is in the bar with every view, because the readings
     // that it clears are in the side column with every view.
     TextButtonQuiet resetButton { "Reset" };
     void resetMeasurements();
-    juce::Button* freezeButton = nullptr;
+    bool spectrumFrozen = false; // freezing is for a moment's look, so it is not a setting that is saved
 
     juce::ParameterAttachment mainViewAttachment;
 

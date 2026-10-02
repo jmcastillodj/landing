@@ -28,7 +28,8 @@ namespace Parameters
         inline const juce::String waveformChannels { "waveformChannels" };
         inline const juce::String waveformColours { "waveformColours" };
         inline const juce::String waveformMode { "waveformMode" };
-        inline const juce::String waveformZoom { "waveformZoom" };
+        inline const juce::String waveformZoom { "waveformVZoom" };
+        inline const juce::String waveformSpan { "waveformSpan" };
         inline const juce::String waveformPeakHistory { "waveformPeakHistory" };
         inline const juce::String waveformTimecode { "waveformTimecode" };
         inline const juce::String summaryMode { "summaryMode" };
@@ -108,8 +109,11 @@ namespace Parameters
     inline const juce::StringArray waveformColourNames { "Multi-band", "Static", "Color map" };
     enum WaveformColours { colourMultiBand, colourStatic, colourMap };
     inline const juce::StringArray waveformModeNames { "Scrolling", "Static sweep" };
-    inline const juce::StringArray waveformZoomNames { "0.5x", "1x", "2x", "4x", "8x", "16x" };
-    inline constexpr std::array<float, 6> waveformZooms { 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f };
+
+    // The span of time that the waveform shows. It has its own, since close up it shows the wave itself.
+    inline const juce::StringArray waveformSpanNames { "10 ms", "25 ms", "50 ms", "100 ms", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s", "15 s", "30 s", "60 s" };
+    inline constexpr std::array<float, 13> waveformSpansSeconds { 0.01f, 0.025f, 0.05f, 0.1f, 0.25f, 0.5f, 1.f, 2.f, 5.f, 10.f, 15.f, 30.f, 60.f };
+    inline constexpr int defaultWaveformSpan = 8;
 
     // What the numbers in the side column are: the loudness, or the RMS levels
     inline const juce::StringArray balanceDetailNames { "Broad", "Fine" };
@@ -238,7 +242,9 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformChannels, 2 }, "Waveform Channels", waveformChannelNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformColours, 2 }, "Waveform Colours", waveformColourNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformMode, 2 }, "Waveform Mode", waveformModeNames, 0, display));
-        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformZoom, 2 }, "Waveform Zoom", waveformZoomNames, 1, display));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { ID::waveformZoom, 2 }, "Waveform Zoom",
+            juce::NormalisableRange<float>(0.1f, 8.f, 0.1f), 1.f, juce::AudioParameterFloatAttributes().withAutomatable(false)));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpan, 2 }, "Waveform Span", waveformSpanNames, defaultWaveformSpan, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceDetail, 2 }, "Balance Detail", balanceDetailNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumStyle, 2 }, "Spectrum Style", spectrumStyleNames, 0, display));

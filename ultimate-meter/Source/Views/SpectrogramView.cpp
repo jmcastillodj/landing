@@ -60,12 +60,6 @@ void SpectrogramView::setPalette(int index)
     repaint();
 }
 
-void SpectrogramView::mouseDown(const juce::MouseEvent& e)
-{
-    if ((e.mods.isPopupMenu() || e.mods.isCtrlDown()) && onContextMenu)
-        onContextMenu();
-}
-
 float SpectrogramView::yOf(double frequency) const
 {
     const double proportion = std::log(frequency / display.minFrequency) / std::log(display.maxFrequency / display.minFrequency);

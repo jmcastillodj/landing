@@ -86,28 +86,43 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(balanceView);
     addChildComponent(loudnessView);
 
-    // A right click on the spectrogram asks for its colours
-    spectrogramView.onContextMenu = [this]
-    {
-        juce::PopupMenu menu;
-        menu.addSectionHeader("Colours");
-        addChoiceItems(menu, *audioProcessor.apvts.getParameter(Parameters::ID::spectrogramColours));
-        menu.setLookAndFeel(&lookAndFeel);
-        menu.showMenuAsync(juce::PopupMenu::Options());
-    };
-
-    // The lens of the waveform steps the zoom through its choices
-    waveformView.onZoomStep = [this](int step)
+    // The lenses of the waveform: the zoom of the amplitude goes by tenths, and the span of time through its choices
+    waveformView.onVerticalStep = [this](int step, bool coarse)
     {
         if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::waveformZoom))
         {
-            const int numChoices = (int)Parameters::waveformZoomNames.size();
-            const int next = juce::jlimit(0, numChoices - 1, getChoice(Parameters::ID::waveformZoom) + step);
+            const float next = juce::jlimit(WaveformView::minZoom, WaveformView::maxZoom,
+                                            std::round((getValue(Parameters::ID::waveformZoom) + (float)step * (coarse ? 1.f : WaveformView::zoomStep)) * 10.f) / 10.f);
             parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)next));
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(next));
             parameter->endChangeGesture();
         }
     };
+    waveformView.onVerticalReset = [this]
+    {
+        if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::waveformZoom))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(1.f));
+            parameter->endChangeGesture();
+        }
+    };
+
+    auto setSpanChoice = [this](int index)
+    {
+        if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::waveformSpan))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)juce::jlimit(0, (int)Parameters::waveformSpanNames.size() - 1, index)));
+            parameter->endChangeGesture();
+        }
+    };
+    waveformView.onHorizontalStep = [this, setSpanChoice](int step, bool coarse)
+    {
+        // A step towards closer is a shorter span
+        setSpanChoice(getChoice(Parameters::ID::waveformSpan) - step * (coarse ? 2 : 1));
+    };
+    waveformView.onHorizontalReset = [setSpanChoice] { setSpanChoice(Parameters::defaultWaveformSpan); };
 
     addAndMakeVisible(levelMeters);
     addAndMakeVisible(loudnessSummary);
@@ -119,6 +134,16 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             heldPeakDb = -200.f;
         else
             audioProcessor.truePeakDetector.requestReset();
+    };
+
+    // A click on the distance to the target opens the targets to choose from
+    loudnessSummary.onTargetClicked = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader("Loudness target");
+        addChoiceItems(menu, *audioProcessor.apvts.getParameter(Parameters::ID::loudnessTarget));
+        menu.setLookAndFeel(&lookAndFeel);
+        menu.showMenuAsync(juce::PopupMenu::Options());
     };
 
     // A click on the title of the numbers changes them between the loudness and the RMS levels
@@ -133,48 +158,28 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     };
     addAndMakeVisible(correlationBar);
 
-    // The controls of the views, each of which shows with the views that it belongs to
-    addAndMakeVisible(controlBar);
-
-    controlBar.addMenu(ControlBar::views({ viewGoniometer }), apvts, ID::goniometerMode, "Mode:");
-    controlBar.addMenu(ControlBar::views({ viewGoniometer }), apvts, ID::goniometerPersistence, "Persistence:");
-
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumChannels, "Channels:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumStyle, "Style:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumBars, "Bars:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumSpeed, "Speed:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumReference, "Reference:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum, viewSpectrogram }), apvts, ID::spectrumTilt, "Tilt:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumSmoothing, "Smoothing:");
-    controlBar.addMenu(ControlBar::views({ viewSpectrum, viewSpectrogram }), apvts, ID::spectrumResolution, "FFT:");
-    controlBar.addToggle(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumPeakHold, "Peak hold");
-
-    // Freezing is for a moment's look, so it is not a setting that is saved
-    freezeButton = &controlBar.addButton(ControlBar::views({ viewSpectrum, viewSpectrogram }), "Freeze", true, [] {});
-
-    controlBar.addMenu(ControlBar::views({ viewSpectrogram }), apvts, ID::spectrogramColours, "Colours:");
-
-    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformChannels, "Channels:");
-    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformColours, "Colours:");
-    controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformMode, "Mode:");
-    controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformPeakHistory, "Peak history");
-    controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformTimecode, "Time code");
-
-    // The tonal balance: the target is chosen from a menu that the view builds, because its list grows with the
-    // targets that the user makes
-    targetButton = &controlBar.addButton(ControlBar::views({ viewBalance }), "Target: Acoustic / Jazz  v", false, [this]
+    // The options of the views are in a menu, which opens on the secondary click of a view, and from this button
+    addAndMakeVisible(optionsButton);
+    optionsButton.buildMenu = [this](juce::PopupMenu& menu)
     {
-        if (targetButton != nullptr)
-            balanceView.showTargetMenu(*targetButton);
-    });
-    controlBar.addMenu(ControlBar::views({ viewBalance }), apvts, ID::balanceDetail, "Detail:");
+        if (!multiEnabled)
+        {
+            buildViewMenu(menu, currentMainView);
+            return;
+        }
 
-    controlBar.addMenu(ControlBar::views({ viewHistory }), apvts, ID::historyShow, "Show:");
+        // With several views showing, each has its menu
+        for (int viewId : tabOrder)
+            if (viewRow[(size_t)viewId] >= 0)
+            {
+                juce::PopupMenu viewMenu;
+                buildViewMenu(viewMenu, viewId);
+                menu.addSubMenu(Parameters::mainViewNames[viewId], viewMenu);
+            }
+    };
 
-    // The views that show time share one timeline, so they share its span
-    controlBar.addMenu(ControlBar::views({ viewSpectrogram, viewHistory, viewLoudness, viewWaveform }), apvts, ID::timeSpan, "Time span:");
-
-    controlBar.addMenu(ControlBar::views({ viewLoudness }), apvts, ID::loudnessTarget, "Target:");
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView })
+        view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
     // is cleared by a click on a view, where a click that was meant for something else can land.
@@ -342,7 +347,7 @@ void UltimateMeterAudioProcessorEditor::paintBottomBar(juce::Graphics& g, juce::
 
     // The bar is raised along its whole length, except for a dip between the controls of the view
     // and the settings of the meters, if the window is wide enough to leave room for one
-    const float dipLeft = (float)controlBar.getX() + (float)controlBar.getUsedWidth() + 24.f;
+    const float dipLeft = (float)optionsButton.getRight() + 24.f;
     const float dipRight = (float)resetButton.getX() - 12.f;
     const bool hasDip = dipRight - dipLeft > 2.f * shoulderWidth + 20.f;
     const float rim = bounds.getBottom() - rimThickness;
@@ -386,7 +391,7 @@ void UltimateMeterAudioProcessorEditor::resized()
     bottomBar.removeFromRight(18); // the corner resizer
     meterSettingsButton.setBounds(bottomBar.removeFromRight(meterSettingsButton.getIdealWidth()));
     resetButton.setBounds(bottomBar.removeFromRight(resetButton.getIdealWidth()));
-    controlBar.setBounds(bottomBar.withTrimmedLeft(8));
+    optionsButton.setBounds(bottomBar.removeFromLeft(optionsButton.getIdealWidth() + 8).withTrimmedLeft(8));
 
     // The side column, from the bottom up: the correlation, the loudness, and the bars in what is left
     bounds.removeFromTop(Theme::gap);
@@ -511,7 +516,6 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
 
     loudnessView.setSpan(timeSpan);
     historyView.setSpan(timeSpan);
-    waveformView.setSpan(timeSpan);
 
     // The waveform is made of the samples themselves, which it reads whichever view is showing
     waveformView.update();
@@ -521,7 +525,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         waveformSettings.channels = getChoice(ID::waveformChannels);
         waveformSettings.colours = getChoice(ID::waveformColours);
         waveformSettings.sweep = getChoice(ID::waveformMode) == 1;
-        waveformSettings.zoom = valueAt(waveformZooms, getChoice(ID::waveformZoom));
+        waveformSettings.zoom = getValue(ID::waveformZoom);
+        waveformSettings.spanSeconds = valueAt(waveformSpansSeconds, getChoice(ID::waveformSpan));
         waveformSettings.peakHistory = isOn(ID::waveformPeakHistory);
         waveformSettings.timeCode = isOn(ID::waveformTimecode);
         waveformSettings.hostSeconds = audioProcessor.hostTimeSeconds.load(std::memory_order_relaxed);
@@ -551,22 +556,12 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         const bool hasNewSpectra = spectrumSource.update(elapsedSeconds, order);
 
         // While frozen the pictures stand still, but the recording carries on underneath
-        const bool frozen = freezeButton != nullptr && freezeButton->getToggleState();
+        const bool frozen = spectrumFrozen;
         spectrogramView.record(numNewSlots, hasNewSpectra, tilt, frozen);
 
         balanceView.setFine(getChoice(ID::balanceDetail) == 1);
         balanceView.record(hasNewSpectra);
 
-        // The button of the targets says which one is on
-        if (targetButton != nullptr)
-        {
-            const auto text = "Target: " + balanceView.getTargetName();
-            if (targetButton->getName() != text)
-            {
-                targetButton->setName(text);
-                targetButton->repaint();
-            }
-        }
 
         if (spectrumView.isVisible())
         {
@@ -805,9 +800,6 @@ void UltimateMeterAudioProcessorEditor::refreshViews()
     tabs.setSelection((int)std::distance(tabOrder.begin(), std::find(tabOrder.begin(), tabOrder.end(), currentMainView)));
     arrangeButton.setVisible(multiEnabled);
 
-    // One bar of controls for all the views that are showing
-    controlBar.showViews(viewMask);
-
     // The dip in the bottom bar follows the width of the controls
     repaint(getLocalBounds().removeFromBottom(Theme::bottomBarHeight));
 
@@ -958,6 +950,128 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
                                viewArea.getHeight(), true, true);
 
     captureSizes();
+}
+
+void UltimateMeterAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+{
+    // The secondary click, or a click with the control key, on a view opens the menu of its options
+    if (!e.mods.isPopupMenu())
+        return;
+
+    for (auto* component = e.eventComponent; component != nullptr && component != this; component = component->getParentComponent())
+        for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+            if (component == componentOfView(viewId))
+            {
+                juce::PopupMenu menu;
+                menu.addSectionHeader(Parameters::mainViewNames[viewId]);
+                buildViewMenu(menu, viewId);
+                menu.setLookAndFeel(&lookAndFeel);
+                menu.showMenuAsync(juce::PopupMenu::Options());
+                return;
+            }
+}
+
+void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int viewId)
+{
+    using namespace Parameters;
+    auto& apvts = audioProcessor.apvts;
+
+    auto addChoice = [&](const juce::String& title, const juce::String& parameterID)
+    {
+        juce::PopupMenu subMenu;
+        addChoiceItems(subMenu, *apvts.getParameter(parameterID));
+        menu.addSubMenu(title, subMenu);
+    };
+
+    auto addSwitch = [&](const juce::String& title, const juce::String& parameterID)
+    {
+        menu.addItem(title, true, isOn(parameterID), [&apvts, parameterID]
+        {
+            auto* parameter = apvts.getParameter(parameterID);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->getValue() > 0.5f ? 0.f : 1.f);
+            parameter->endChangeGesture();
+        });
+    };
+
+    auto addFreeze = [&]
+    {
+        menu.addItem("Freeze", true, spectrumFrozen, [this] { spectrumFrozen = !spectrumFrozen; });
+    };
+
+    switch (viewId)
+    {
+        case viewGoniometer:
+        {
+            addChoice("Mode", ID::goniometerMode);
+            addChoice("Persistence", ID::goniometerPersistence);
+
+            juce::PopupMenu scaleMenu;
+            for (float scale : { 50.f, 75.f, 100.f, 125.f, 150.f, 200.f })
+                scaleMenu.addItem(juce::String((int)scale) + "%", true, std::abs(getValue(ID::goniometerScale) - scale) < 1.f, [&apvts, scale]
+                {
+                    auto* parameter = apvts.getParameter(ID::goniometerScale);
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost(parameter->convertTo0to1(scale));
+                    parameter->endChangeGesture();
+                });
+            menu.addSubMenu("Scale", scaleMenu);
+            break;
+        }
+
+        case viewSpectrum:
+            addChoice("Channels", ID::spectrumChannels);
+            addChoice("Style", ID::spectrumStyle);
+            addChoice("Bars", ID::spectrumBars);
+            addChoice("Speed", ID::spectrumSpeed);
+            addChoice("Reference", ID::spectrumReference);
+            addChoice("Tilt", ID::spectrumTilt);
+            addChoice("Smoothing", ID::spectrumSmoothing);
+            addChoice("FFT size", ID::spectrumResolution);
+            addSwitch("Peak hold", ID::spectrumPeakHold);
+            addFreeze();
+            break;
+
+        case viewSpectrogram:
+            addChoice("Colours", ID::spectrogramColours);
+            addChoice("Tilt", ID::spectrumTilt);
+            addChoice("FFT size", ID::spectrumResolution);
+            addChoice("Time span", ID::timeSpan);
+            addFreeze();
+            break;
+
+        case viewWaveform:
+            addChoice("Channels", ID::waveformChannels);
+            addChoice("Colours", ID::waveformColours);
+            addChoice("Span", ID::waveformSpan);
+            addChoice("Mode", ID::waveformMode);
+            addSwitch("Peak history", ID::waveformPeakHistory);
+            addSwitch("Time code", ID::waveformTimecode);
+            break;
+
+        case viewBalance:
+            balanceView.addTargetItems(menu);
+            {
+                juce::PopupMenu detailMenu;
+                addChoiceItems(detailMenu, *apvts.getParameter(ID::balanceDetail));
+                menu.addSubMenu("Detail", detailMenu);
+            }
+            menu.addItem("Start the average again", [this] { balanceView.clearHistory(); });
+            break;
+
+        case viewLoudness:
+            addChoice("Target", ID::loudnessTarget);
+            addChoice("Time span", ID::timeSpan);
+            break;
+
+        case viewHistory:
+            addChoice("Show", ID::historyShow);
+            addChoice("Time span", ID::timeSpan);
+            break;
+
+        default:
+            break;
+    }
 }
 
 void UltimateMeterAudioProcessorEditor::resetMeasurements()

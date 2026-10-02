@@ -16,7 +16,11 @@
 class TonalBalanceView : public juce::Component
 {
 public:
-    static constexpr float rangeDb = 16.f; // the plot shows this far above and below the target
+    // The plot shows the spectrum as it is, falling with frequency as music does, so that pink noise falls by 3 dB per octave.
+    // The curves of the targets are kept without that slope, and it is put back when they are drawn.
+    static constexpr float topDb = 30.f;
+    static constexpr float bottomDb = -54.f;
+    static constexpr float naturalSlopeDbPerOctave = -TonalTargets::displayTiltDbPerOctave;
     static constexpr std::array<double, 3> bandEdges { 200.0, 2000.0, 7000.0 };
 
     TonalBalanceView(SpectrumSource&, juce::ValueTree& sessionState);
@@ -35,8 +39,11 @@ public:
 
     const juce::String& getTargetName() const { return targetName; }
 
-    // Shows the menu of targets, from the component that asked for it
-    void showTargetMenu(juce::Component& target);
+    // Adds to a menu the items for choosing the target, making one from a recording, and removing one's own
+    void addTargetItems(juce::PopupMenu& menu);
+
+    // Clicking the view starts the average again
+    void mouseDown(const juce::MouseEvent&) override;
 
 private:
     struct BandReading
@@ -62,7 +69,7 @@ private:
     juce::ValueTree& state;
 
     juce::Rectangle<int> plot;
-    SpectrumEngine::Display layout = TonalTargets::display(1.f / 6.f);
+    SpectrumEngine::Display layout = TonalTargets::display(1.f / 3.f);
     bool fine = true;
 
     // The power at each point, added up over the frames, and how many frames there have been
