@@ -167,7 +167,7 @@ void StereoPanel::paintBar(juce::Graphics& g, juce::Rectangle<float> area, const
         }
         else if (segment == valueSegment)
         {
-            colour = deviationShown < -3.f ? Theme::over : deviationShown < -1.5f ? Theme::warn : Theme::meterLight;
+            colour = deviationShown <= -3.9f ? Theme::over : deviationShown < -2.5f ? Theme::warn : Theme::meterLight;
         }
 
         g.setColour(colour);

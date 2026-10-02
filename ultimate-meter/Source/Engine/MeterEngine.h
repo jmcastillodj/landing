@@ -202,15 +202,15 @@ private:
             return static_cast<float>(std::clamp(2.0 * sd / (m + sd), 0.0, 1.0));
         }
 
-        // The mono sum, left plus right, against the stereo source: +3 dB for a mono signal, 0 for channels that
-        // have nothing in common, and far below for channels that cancel
+        // The mono sum, left plus right with 3 dB taken off, against the stereo source: 0 dB for a mono signal, -3 dB for
+        // channels that have nothing in common, and far below for channels that cancel
         float getMonoDeviationDb() const
         {
             if (ll + rr < 1.0e-12)
                 return 0.f;
 
             const double sum = std::max(1.0e-6 * (ll + rr), ll + rr + 2.0 * lr);
-            return static_cast<float>(std::clamp(10.0 * std::log10(sum / (ll + rr)), -40.0, 10.0));
+            return static_cast<float>(std::clamp(10.0 * std::log10(0.5 * sum / (ll + rr)), -40.0, 10.0));
         }
 
         double lr = 0.0, ll = 0.0, rr = 0.0;
