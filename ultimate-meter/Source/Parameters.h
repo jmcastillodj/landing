@@ -39,7 +39,8 @@ namespace Parameters
         inline const juce::String spectrumStyle { "spectrumStyle" };
         inline const juce::String spectrumBars { "spectrumBars" };
         inline const juce::String spectrumSpeed { "spectrumSpeed" };
-        inline const juce::String spectrumTilt { "spectrumTilt" };
+        // The ID changed when the default became 0 dB/oct, so that sessions saved with the old default of 4.5 open at the new one
+        inline const juce::String spectrumTilt { "spectrumTiltNatural" };
         inline const juce::String spectrumSmoothing { "spectrumSmoothing" };
         inline const juce::String spectrumResolution { "spectrumResolution" };
         inline const juce::String spectrumPeakHold { "spectrumPeakHold" };
