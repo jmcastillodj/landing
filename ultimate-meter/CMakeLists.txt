@@ -46,6 +46,7 @@ target_sources(UltimateMeter PRIVATE
     Source/Views/LoudnessView.cpp
     Source/Views/SpectrogramView.cpp
     Source/Views/SpectrumView.cpp
+    Source/Views/TonalBalanceView.cpp
     Source/Views/WaveformView.cpp)
 
 target_compile_definitions(UltimateMeter PUBLIC
@@ -88,7 +89,8 @@ if(ULTIMATEMETER_BUILD_TESTS)
         Tests/ProcessorTests.cpp
         Tests/LoudnessTests.cpp
         Tests/SpectrumTests.cpp
-        Tests/TimelineTests.cpp)
+        Tests/TimelineTests.cpp
+        Tests/TonalTests.cpp)
 
     add_test(NAME UltimateMeterTests COMMAND UltimateMeterTests)
 

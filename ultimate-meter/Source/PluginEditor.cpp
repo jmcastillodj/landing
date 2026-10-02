@@ -29,7 +29,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 6> tabOrder { Parameters::viewSpectrum, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness,
+    constexpr std::array<int, 7> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -42,6 +42,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     spectrumView(spectrumSource),
     spectrogramView(spectrumSource),
     waveformView(p),
+    balanceView(spectrumSource, p.apvts.state),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
     vBlankAttachment(this, [this](double timestampSeconds) { vBlank(timestampSeconds); })
@@ -82,6 +83,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(spectrogramView);
     addChildComponent(historyView);
     addChildComponent(waveformView);
+    addChildComponent(balanceView);
     addChildComponent(loudnessView);
 
     // A right click on the spectrogram asks for its colours
@@ -138,6 +140,9 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     controlBar.addMenu(ControlBar::views({ viewGoniometer }), apvts, ID::goniometerPersistence, "Persistence:");
 
     controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumChannels, "Channels:");
+    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumStyle, "Style:");
+    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumBars, "Bars:");
+    controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumSpeed, "Speed:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumReference, "Reference:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum, viewSpectrogram }), apvts, ID::spectrumTilt, "Tilt:");
     controlBar.addMenu(ControlBar::views({ viewSpectrum }), apvts, ID::spectrumSmoothing, "Smoothing:");
@@ -154,6 +159,15 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     controlBar.addMenu(ControlBar::views({ viewWaveform }), apvts, ID::waveformMode, "Mode:");
     controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformPeakHistory, "Peak history");
     controlBar.addToggle(ControlBar::views({ viewWaveform }), apvts, ID::waveformTimecode, "Time code");
+
+    // The tonal balance: the target is chosen from a menu that the view builds, because its list grows with the
+    // targets that the user makes
+    targetButton = &controlBar.addButton(ControlBar::views({ viewBalance }), "Target: Acoustic / Jazz  v", false, [this]
+    {
+        if (targetButton != nullptr)
+            balanceView.showTargetMenu(*targetButton);
+    });
+    controlBar.addMenu(ControlBar::views({ viewBalance }), apvts, ID::balanceDetail, "Detail:");
 
     controlBar.addMenu(ControlBar::views({ viewHistory }), apvts, ID::historyShow, "Show:");
 
@@ -540,6 +554,20 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         const bool frozen = freezeButton != nullptr && freezeButton->getToggleState();
         spectrogramView.record(numNewSlots, hasNewSpectra, tilt, frozen);
 
+        balanceView.setFine(getChoice(ID::balanceDetail) == 1);
+        balanceView.record(hasNewSpectra);
+
+        // The button of the targets says which one is on
+        if (targetButton != nullptr)
+        {
+            const auto text = "Target: " + balanceView.getTargetName();
+            if (targetButton->getName() != text)
+            {
+                targetButton->setName(text);
+                targetButton->repaint();
+            }
+        }
+
         if (spectrumView.isVisible())
         {
             SpectrumView::Settings spectrumSettings;
@@ -547,6 +575,9 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
             spectrumSettings.tiltDbPerOctave = tilt;
             spectrumSettings.smoothingOctaves = valueAt(spectrumSmoothingOctaves, getChoice(ID::spectrumSmoothing));
             spectrumSettings.peakHold = isOn(ID::spectrumPeakHold);
+            spectrumSettings.bars = getChoice(ID::spectrumStyle) == 1;
+            spectrumSettings.numBars = valueAt(spectrumBarCounts, getChoice(ID::spectrumBars));
+            spectrumSettings.releaseSeconds = valueAt(spectrumReleaseSeconds, getChoice(ID::spectrumSpeed));
 
             const int reference = getChoice(ID::spectrumReference);
             spectrumSettings.hasReference = reference > 0;
@@ -574,6 +605,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewHistory:     return &historyView;
         case Parameters::viewLoudness:    return &loudnessView;
         case Parameters::viewWaveform:    return &waveformView;
+        case Parameters::viewBalance:     return &balanceView;
         default:                          return nullptr;
     }
 }
@@ -937,6 +969,7 @@ void UltimateMeterAudioProcessorEditor::resetMeasurements()
     spectrogramView.clearHistory();
     historyView.clearHistory();
     waveformView.clearHistory();
+    balanceView.clearHistory();
     loudnessView.clearHistory();
 
     spectrumView.resetPeakHold();

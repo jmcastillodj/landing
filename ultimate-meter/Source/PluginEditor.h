@@ -21,6 +21,7 @@
 #include "Views/SpectrogramView.h"
 #include "Views/HistoryView.h"
 #include "Views/WaveformView.h"
+#include "Views/TonalBalanceView.h"
 #include "Views/LoudnessView.h"
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
@@ -96,6 +97,7 @@ private:
     TabBar tabs;
     TextButtonQuiet multiButton { "Multi" };
     TextButtonQuiet arrangeButton { "Layout" };
+    juce::Button* targetButton = nullptr;
 
 
     // The views, of which one is showing. The spectrum and the spectrogram draw the same spectra.
@@ -105,6 +107,7 @@ private:
     SpectrogramView spectrogramView;
     HistoryView historyView;
     WaveformView waveformView;
+    TonalBalanceView balanceView;
     LoudnessView loudnessView;
 
     // The side column, which is always showing
@@ -130,7 +133,7 @@ private:
     static constexpr int maxRows = 4;
     bool multiEnabled = false;
     float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
-    std::array<int, 6> viewRow { -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
+    std::array<int, 7> viewRow { -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;
     juce::StretchableLayoutManager rowLayout;
@@ -144,7 +147,7 @@ private:
     // They are read from the layout after every change, so that adding a view or taking one away does
     // not undo the sizes that were dragged, and they are kept in the session.
     std::array<double, maxRows> rowWeight {};
-    std::array<double, 6> viewWeight {};
+    std::array<double, 7> viewWeight {};
 
     // Set by the reset button and the reset item of the menu, and cleared by the next update
     bool resetTicksRequested = false;

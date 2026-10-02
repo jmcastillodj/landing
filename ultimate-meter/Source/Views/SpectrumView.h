@@ -44,6 +44,9 @@ public:
         float tiltDbPerOctave = 0.f;
         float smoothingOctaves = 0.f;
         bool peakHold = false;
+        bool bars = false;             // Bars in place of curves, each the level of a band of the spectrum
+        int numBars = 31;
+        float releaseSeconds = 0.30f;  // how slowly what is drawn falls back
         bool hasReference = false;     // A straight reference line, such as pink noise, drawn at the level of the signal
         float referenceSlopeDbPerOctave = 0.f;
         juce::String referenceName;
@@ -51,6 +54,7 @@ public:
         bool operator==(const Settings& other) const
         {
             return midSide == other.midSide && peakHold == other.peakHold && hasReference == other.hasReference
+                && bars == other.bars && numBars == other.numBars && juce::exactlyEqual(releaseSeconds, other.releaseSeconds)
                 && juce::exactlyEqual(referenceSlopeDbPerOctave, other.referenceSlopeDbPerOctave)
                 && juce::exactlyEqual(tiltDbPerOctave, other.tiltDbPerOctave)
                 && juce::exactlyEqual(smoothingOctaves, other.smoothingOctaves);
@@ -80,6 +84,7 @@ private:
     void paintGrid(juce::Graphics& g);
     void paintReadout(juce::Graphics& g);
     void paintReference(juce::Graphics& g);
+    void paintBars(juce::Graphics& g);
 
     // Finds the level at which the reference line is drawn: the average of the first curve between 100 Hz
     // and 10 kHz, once the line's own slope has been taken out of it, so that a signal that has the shape

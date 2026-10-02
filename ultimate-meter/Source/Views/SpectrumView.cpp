@@ -85,7 +85,11 @@ void SpectrumView::paint(juce::Graphics& g)
 
         // The second curve (right or side) is drawn first, so that the first lies on top of it
         const std::array<juce::Colour, 2> colours { Theme::accent, Theme::second };
-        for (int index = 1; index >= 0; --index)
+
+        if (settings.bars)
+            paintBars(g);
+
+        for (int index = settings.bars ? -1 : 1; index >= 0; --index)
         {
             const auto i = (size_t)index;
 
@@ -210,6 +214,50 @@ void SpectrumView::paintReference(juce::Graphics& g)
     g.fillPath(dashed);
 }
 
+// The spectrum as bars: one for each band, the two channels side by side in a band, each a gradient of its
+// colour that is brightest at the top, with a bright cap and, if it is on, a tick that holds the highest level
+void SpectrumView::paintBars(juce::Graphics& g)
+{
+    const size_t numBars = shown[0].size();
+    if (numBars == 0)
+        return;
+
+    const std::array<juce::Colour, 2> colours { Theme::accent, Theme::second };
+    const float bandWidth = (float)plot.getWidth() / (float)numBars;
+    const float gap = juce::jlimit(1.f, 4.f, 0.14f * bandWidth);
+    const float barWidth = juce::jmax(1.f, (bandWidth - gap) / 2.f);
+    const float bottom = (float)plot.getBottom();
+
+    for (size_t band = 0; band < numBars; ++band)
+    {
+        const float left = (float)plot.getX() + (float)band * bandWidth + 0.5f * gap;
+
+        for (size_t channel = 0; channel < 2; ++channel)
+        {
+            if (shown[channel].size() != numBars)
+                continue;
+
+            const float x = left + (float)channel * barWidth;
+            const float top = yOf(juce::jmax(shown[channel][band], minDecibels));
+            if (top >= bottom - 0.5f)
+                continue;
+
+            g.setGradientFill(juce::ColourGradient(colours[channel].withAlpha(0.95f), 0.f, top,
+                                                   colours[channel].withAlpha(0.28f), 0.f, bottom, false));
+            g.fillRect(x, top, barWidth - (channel == 0 ? 0.5f : 0.f), bottom - top);
+
+            g.setColour(colours[channel].brighter(0.5f));
+            g.fillRect(x, top, barWidth - (channel == 0 ? 0.5f : 0.f), 2.f);
+
+            if (settings.peakHold && peakHolds[channel].size() == numBars)
+            {
+                g.setColour(juce::Colours::white.withAlpha(0.85f));
+                g.fillRect(x, yOf(juce::jmax(peakHolds[channel][band], minDecibels)) - 1.f, barWidth - 0.5f, 2.f);
+            }
+        }
+    }
+}
+
 void SpectrumView::paintReadout(juce::Graphics& g)
 {
     const auto position = *hover;
@@ -247,7 +295,7 @@ void SpectrumView::paintReadout(juce::Graphics& g)
 void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float elapsedSeconds, bool held)
 {
     // One point per pixel is as fine as the screen can show
-    const int numPoints = juce::jmax(2, plot.getWidth());
+    const int numPoints = newSettings.bars ? newSettings.numBars : juce::jmax(2, plot.getWidth());
     const bool settingsChanged = numPoints != display.numPoints || !(newSettings == settings);
 
     // Whatever is no longer comparable starts afresh
@@ -265,6 +313,10 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
     display.numPoints = numPoints;
     display.tiltDbPerOctave = settings.tiltDbPerOctave;
     display.smoothingOctaves = settings.smoothingOctaves;
+
+    // A bar is the level of a band, so its analysis averages over the width of the band
+    if (settings.bars)
+        display.smoothingOctaves = (float)(std::log2(maxFrequency / minFrequency) / (double)numPoints);
 
     if ((hasNewSpectra && !held) || settingsChanged)
     {
@@ -313,7 +365,7 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
 
     // Move what is drawn towards the latest spectrum: quickly up, and slowly down
     const float attack = 1.f - std::exp(-elapsedSeconds / attackSeconds);
-    const float release = 1.f - std::exp(-elapsedSeconds / releaseSeconds);
+    const float release = 1.f - std::exp(-elapsedSeconds / settings.releaseSeconds);
     float furthestMoved = 0.f;
 
     for (size_t i = 0; i < curves.size(); ++i)
@@ -342,7 +394,7 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
 
     // Keep a copy of where the curves are, every so often, for the trails
     secondsSinceTrail += elapsedSeconds;
-    if (secondsSinceTrail >= trailIntervalSeconds)
+    if (secondsSinceTrail >= trailIntervalSeconds && !settings.bars)
     {
         secondsSinceTrail = 0.f;
         trails[(size_t)nextTrail] = shown;

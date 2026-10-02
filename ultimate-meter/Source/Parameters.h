@@ -32,6 +32,7 @@ namespace Parameters
         inline const juce::String waveformPeakHistory { "waveformPeakHistory" };
         inline const juce::String waveformTimecode { "waveformTimecode" };
         inline const juce::String summaryMode { "summaryMode" };
+        inline const juce::String balanceDetail { "balanceDetail" };
         inline const juce::String spectrumStyle { "spectrumStyle" };
         inline const juce::String spectrumBars { "spectrumBars" };
         inline const juce::String spectrumSpeed { "spectrumSpeed" };
@@ -57,7 +58,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance" };
 
     enum MeterView
     {
@@ -73,7 +74,8 @@ namespace Parameters
         viewSpectrogram,
         viewHistory,
         viewLoudness,
-        viewWaveform // added after the others, so that sessions saved before it keep their view
+        viewWaveform, // added after the others, so that sessions saved before them keep their view
+        viewBalance
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };
@@ -110,6 +112,7 @@ namespace Parameters
     inline constexpr std::array<float, 6> waveformZooms { 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f };
 
     // What the numbers in the side column are: the loudness, or the RMS levels
+    inline const juce::StringArray balanceDetailNames { "Broad", "Fine" };
     inline const juce::StringArray summaryModeNames { "Loudness", "RMS" };
 
     // How the spectrum is drawn: as a curve, or as bars, whose number says how fine the analysis is
@@ -236,6 +239,7 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformColours, 2 }, "Waveform Colours", waveformColourNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformMode, 2 }, "Waveform Mode", waveformModeNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformZoom, 2 }, "Waveform Zoom", waveformZoomNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceDetail, 2 }, "Balance Detail", balanceDetailNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumStyle, 2 }, "Spectrum Style", spectrumStyleNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumBars, 2 }, "Spectrum Bars", spectrumBarsNames, 2, display));
