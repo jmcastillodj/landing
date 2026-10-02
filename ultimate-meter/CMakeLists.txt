@@ -47,6 +47,7 @@ target_sources(UltimateMeter PRIVATE
     Source/Views/SpectrogramView.cpp
     Source/Views/SpectrumView.cpp
     Source/Views/TonalBalanceView.cpp
+    Source/Views/LoudnessRadarView.cpp
     Source/Views/WaveformView.cpp)
 
 target_compile_definitions(UltimateMeter PUBLIC

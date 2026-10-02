@@ -34,6 +34,8 @@ namespace Parameters
         inline const juce::String waveformTimecode { "waveformTimecode" };
         inline const juce::String summaryMode { "summaryMode" };
         inline const juce::String balanceDetail { "balanceDetail" };
+        inline const juce::String radarSpeed { "radarSpeed" };
+        inline const juce::String radarSource { "radarSource" };
         inline const juce::String spectrumStyle { "spectrumStyle" };
         inline const juce::String spectrumBars { "spectrumBars" };
         inline const juce::String spectrumSpeed { "spectrumSpeed" };
@@ -59,7 +61,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round" };
 
     enum MeterView
     {
@@ -76,7 +78,8 @@ namespace Parameters
         viewHistory,
         viewLoudness,
         viewWaveform, // added after the others, so that sessions saved before them keep their view
-        viewBalance
+        viewBalance,
+        viewLoudnessRound
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };
@@ -117,6 +120,10 @@ namespace Parameters
 
     // What the numbers in the side column are: the loudness, or the RMS levels
     inline const juce::StringArray balanceDetailNames { "Broad", "Fine" };
+    // The radar of the loudness: the time one turn takes, and the reading that it draws
+    inline const juce::StringArray radarSpeedNames { "30 s", "1 min", "2 min", "5 min" };
+    inline constexpr std::array<float, 4> radarSpeedsSeconds { 30.f, 60.f, 120.f, 300.f };
+    inline const juce::StringArray radarSourceNames { "Momentary", "Short-term" };
     inline const juce::StringArray summaryModeNames { "Loudness", "RMS" };
 
     // How the spectrum is drawn: as a curve, or as bars, whose number says how fine the analysis is
@@ -246,6 +253,8 @@ namespace Parameters
             juce::NormalisableRange<float>(0.1f, 8.f, 0.1f), 1.f, juce::AudioParameterFloatAttributes().withAutomatable(false)));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpan, 2 }, "Waveform Span", waveformSpanNames, defaultWaveformSpan, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceDetail, 2 }, "Balance Detail", balanceDetailNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSpeed, 2 }, "Radar Speed", radarSpeedNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSource, 2 }, "Radar Reading", radarSourceNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumStyle, 2 }, "Spectrum Style", spectrumStyleNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumBars, 2 }, "Spectrum Bars", spectrumBarsNames, 2, display));
@@ -254,7 +263,7 @@ namespace Parameters
             juce::AudioParameterBoolAttributes().withAutomatable(false)));
         layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { ID::waveformTimecode, 2 }, "Waveform Time Code", false,
             juce::AudioParameterBoolAttributes().withAutomatable(false)));
-        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumTilt, 2 }, "Spectrum Tilt", spectrumTiltNames, 2, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumTilt, 2 }, "Spectrum Tilt", spectrumTiltNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumSmoothing, 2 }, "Spectrum Smoothing", spectrumSmoothingNames, 2, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::spectrumResolution, 2 }, "Spectrum Resolution", spectrumResolutionNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::loudnessTarget, 2 }, "Loudness Target", loudnessTargetNames, 1, display));

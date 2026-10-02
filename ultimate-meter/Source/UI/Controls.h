@@ -265,10 +265,16 @@ public:
 
     void resized() override
     {
+        // When the room is short the space around the names shrinks, so that every tab stays in view
+        int textTotal = 0;
+        for (auto& name : names)
+            textTotal += Theme::textWidth(tabFont(), name);
+        currentPadding = names.isEmpty() ? padding : juce::jlimit(4, padding, (getWidth() - textTotal) / (2 * names.size()));
+
         areas.clear();
         auto bounds = getLocalBounds();
         for (auto& name : names)
-            areas.add(bounds.removeFromLeft(Theme::textWidth(tabFont(), name) + 2 * padding));
+            areas.add(bounds.removeFromLeft(Theme::textWidth(tabFont(), name) + 2 * currentPadding));
     }
 
     void paint(juce::Graphics& g) override
@@ -284,7 +290,7 @@ public:
             if (isSelected)
             {
                 g.setColour(Theme::accent);
-                g.fillRect(areas[index].reduced(padding, 0).removeFromBottom(2));
+                g.fillRect(areas[index].reduced(currentPadding, 0).removeFromBottom(2));
             }
         }
     }
@@ -310,6 +316,7 @@ public:
 
 private:
     static constexpr int padding = 12;
+    int currentPadding = padding;
     static juce::Font tabFont() { return Theme::font(11.f, true).withExtraKerningFactor(0.08f); }
 
     int tabAt(juce::Point<int> position) const

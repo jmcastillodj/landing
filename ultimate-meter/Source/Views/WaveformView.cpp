@@ -493,12 +493,27 @@ void WaveformView::mouseDown(const juce::MouseEvent& e)
 
 void WaveformView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    const int step = wheel.deltaY > 0.f ? 1 : wheel.deltaY < 0.f ? -1 : 0;
-    if (step == 0)
+    // A trackpad sends a stream of tiny movements, and a mouse sends one notch at a time. The movements are added up,
+    // and one step is taken for each notch's worth, but never more than one every so often, so that the zoom does not race
+    const bool horizontal = e.mods.isCtrlDown() || e.mods.isCommandDown();
+    const float delta = wheel.deltaY != 0.f ? wheel.deltaY : wheel.deltaX;
+    if (delta == 0.f)
         return;
 
+    wheelAccumulator += wheel.isReversed ? -delta : delta;
+
+    const auto now = juce::Time::getMillisecondCounter();
+    if (wheelAccumulator > -0.4f && wheelAccumulator < 0.4f)
+        return;
+    if (now - lastWheelStep < 90)
+        return;
+
+    const int step = wheelAccumulator > 0.f ? 1 : -1;
+    wheelAccumulator = 0.f;
+    lastWheelStep = now;
+
     // The wheel zooms the amplitude, and with the control or command key, the time
-    if (e.mods.isCtrlDown() || e.mods.isCommandDown())
+    if (horizontal)
     {
         if (onHorizontalStep)
             onHorizontalStep(step, false);

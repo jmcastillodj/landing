@@ -382,7 +382,7 @@ int main(int argc, char* argv[])
         // multi=1:0,5:0,4:1 puts those views on screen together, each as view:row (multi mode)
         if (id == "multi")
         {
-            juce::StringArray rows { "-1", "-1", "-1", "-1", "-1", "-1", "-1" };
+            juce::StringArray rows { "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1" };
             for (auto& item : juce::StringArray::fromTokens(argument.fromFirstOccurrenceOf("=", false, false), ",", ""))
                 rows.set(item.upToFirstOccurrenceOf(":", false, false).getIntValue(), item.fromFirstOccurrenceOf(":", false, false));
             processor.apvts.state.setProperty("multiEnabled", true, nullptr);

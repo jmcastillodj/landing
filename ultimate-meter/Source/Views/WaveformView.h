@@ -119,6 +119,9 @@ private:
     // Makes the bins of the picture, from the newest, and says where the newest one ends and how wide each is
     void buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan) const;
 
+    float wheelAccumulator = 0.f;
+    juce::uint32 lastWheelStep = 0;
+
     static constexpr int numControls = 2; // the vertical lens, the horizontal lens
     juce::Rectangle<int> controlArea(int control) const;
     void hitTestControl(juce::Point<int> position, int& control, int& part) const;

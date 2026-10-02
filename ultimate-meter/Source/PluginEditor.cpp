@@ -29,7 +29,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 7> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness,
+    constexpr std::array<int, 8> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -85,6 +85,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(waveformView);
     addChildComponent(balanceView);
     addChildComponent(loudnessView);
+    addChildComponent(radarView);
 
     // The lenses of the waveform: the zoom of the amplitude goes by tenths, and the span of time through its choices
     waveformView.onVerticalStep = [this](int step, bool coarse)
@@ -178,7 +179,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             }
     };
 
-    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView })
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView })
         view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
@@ -538,6 +539,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     spectrogramView.setSpan(timeSpan);
 
     loudnessView.update(loudness, truePeakDb, maxTruePeakDb, target, numNewSlots, elapsedSeconds, readoutDue);
+    radarView.update(loudness, target, valueAt(radarSpeedsSeconds, getChoice(ID::radarSpeed)), getChoice(ID::radarSource) == 1,
+                     audioRunning ? elapsedSeconds : 0.f, readoutDue);
     historyView.record(numNewSlots, juce::jmax(levels.peakDb[0], levels.peakDb[1]), juce::jmax(levels.rmsDb[0], levels.rmsDb[1]));
 
     // Only the visible view needs the samples themselves
@@ -601,6 +604,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewLoudness:    return &loudnessView;
         case Parameters::viewWaveform:    return &waveformView;
         case Parameters::viewBalance:     return &balanceView;
+        case Parameters::viewLoudnessRound: return &radarView;
         default:                          return nullptr;
     }
 }
@@ -672,9 +676,17 @@ void UltimateMeterAudioProcessorEditor::closeUpRows()
         if (row >= 0)
             used.insert(row);
 
+    // The sizes of the rows follow their rows to the new numbers
+    auto oldWeights = rowWeight;
+    std::fill(rowWeight.begin(), rowWeight.end(), 0.0);
+
     for (int& row : viewRow)
         if (row >= 0)
-            row = (int)std::distance(used.begin(), used.find(row));
+        {
+            const int newRow = (int)std::distance(used.begin(), used.find(row));
+            rowWeight[(size_t)newRow] = oldWeights[(size_t)row];
+            row = newRow;
+        }
 }
 
 void UltimateMeterAudioProcessorEditor::setMultiMode(bool enabled)
@@ -694,6 +706,8 @@ void UltimateMeterAudioProcessorEditor::setMultiMode(bool enabled)
 
 void UltimateMeterAudioProcessorEditor::toggleViewInMulti(int viewId)
 {
+    // The sizes the user dragged to are read first, so that a view that comes in or goes out leaves the others as they are
+    captureSizes();
     auto& row = viewRow[(size_t)viewId];
 
     if (row >= 0)
@@ -718,6 +732,7 @@ void UltimateMeterAudioProcessorEditor::toggleViewInMulti(int viewId)
 
 void UltimateMeterAudioProcessorEditor::setViewRow(int viewId, int row)
 {
+    captureSizes();
     // The last view cannot be taken away
     if (row < 0 && std::count_if(viewRow.begin(), viewRow.end(), [](int r) { return r >= 0; }) <= 1 && viewRow[(size_t)viewId] >= 0)
         return;
@@ -731,6 +746,9 @@ void UltimateMeterAudioProcessorEditor::setViewRow(int viewId, int row)
 // 0: one view to a row. 1: all the views in one row. 2: two views to a row.
 void UltimateMeterAudioProcessorEditor::applyLayoutPreset(int preset)
 {
+    // A new arrangement starts with equal shares
+    rowWeight.fill(0.0);
+    viewWeight.fill(0.0);
     int position = 0;
     for (int viewId : tabOrder)
     {
@@ -1064,6 +1082,13 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             addChoice("Time span", ID::timeSpan);
             break;
 
+        case viewLoudnessRound:
+            addChoice("Reading", ID::radarSource);
+            addChoice("Turn takes", ID::radarSpeed);
+            addChoice("Target", ID::loudnessTarget);
+            menu.addItem("Clear the radar", [this] { radarView.clearHistory(); });
+            break;
+
         case viewHistory:
             addChoice("Show", ID::historyShow);
             addChoice("Time span", ID::timeSpan);
@@ -1085,6 +1110,7 @@ void UltimateMeterAudioProcessorEditor::resetMeasurements()
     waveformView.clearHistory();
     balanceView.clearHistory();
     loudnessView.clearHistory();
+    radarView.clearHistory();
 
     spectrumView.resetPeakHold();
     resetTicksRequested = true;
