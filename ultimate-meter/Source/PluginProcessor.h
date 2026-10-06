@@ -19,6 +19,7 @@
 #include "Engine/TruePeakDetector.h"
 #include "Engine/SampleRingBuffer.h"
 #include "Engine/ReferenceManager.h"
+#include "Engine/MultibandCorrelator.h"
 
 using namespace juce;
 
@@ -84,6 +85,8 @@ public:
     // Carries every sample to the goniometer and the spectrum analyzer
     SampleRingBuffer sampleRingBuffer;
     ReferenceManager references;
+    MultibandCorrelator correlator;
+    std::array<std::atomic<float>*, 5> corrParameters {}; // primary, secondary, bands, averaging time, bandwidth
 
 #if USE_OSC
     // Oscillator for generating test signals

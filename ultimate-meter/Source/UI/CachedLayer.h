@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Theme.h"
 
 //==============================================================================
 // Keeps the part of a display that seldom changes, such as its grid and its labels,
@@ -25,7 +26,7 @@ public:
         const int width = juce::roundToInt((float)bounds.getWidth() * scale);
         const int height = juce::roundToInt((float)bounds.getHeight() * scale);
 
-        if (dirty || image.getWidth() != width || image.getHeight() != height)
+        if (dirty || themeVersion != Theme::version || image.getWidth() != width || image.getHeight() != height)
         {
             image = juce::Image(opaque ? juce::Image::RGB : juce::Image::ARGB, juce::jmax(1, width), juce::jmax(1, height), true);
 
@@ -33,6 +34,7 @@ public:
             layer.addTransform(juce::AffineTransform::scale(scale));
             paintLayer(layer);
             dirty = false;
+            themeVersion = Theme::version;
         }
 
         g.drawImage(image, bounds.toFloat());
@@ -41,4 +43,5 @@ public:
 private:
     juce::Image image;
     bool dirty = true;
+    int themeVersion = -1;
 };

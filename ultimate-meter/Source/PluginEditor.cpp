@@ -30,7 +30,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 9> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference,
+    constexpr std::array<int, 10> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference, Parameters::viewCorrelometer,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -45,8 +45,10 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     waveformView(p),
     balanceView(spectrumSource, p.apvts.state),
     referenceView(p.references, p.apvts.state),
+    correlometerView(p.apvts, p.apvts.state),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
+    themeAttachment(*p.apvts.getParameter(Parameters::ID::theme), [this](float value) { applyTheme(juce::roundToInt(value)); }),
     vBlankAttachment(this, [this](double timestampSeconds) { vBlank(timestampSeconds); })
 {
     using namespace Parameters;
@@ -70,6 +72,27 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             mainViewAttachment.setValueAsCompleteGesture((float)tabOrder[(size_t)tab]);
     };
 
+    // The colour scheme
+    addAndMakeVisible(themeButton);
+    themeButton.setTooltip("Choose the colours of the meter");
+    themeButton.onClick = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader("Theme");
+        for (int i = 0; i < Theme::themeNames.size(); ++i)
+            menu.addItem(Theme::themeNames[i], true, appliedTheme == i, [this, i]
+            {
+                if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::theme))
+                {
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost(parameter->convertTo0to1((float)i));
+                    parameter->endChangeGesture();
+                }
+            });
+        menu.setLookAndFeel(&lookAndFeel);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&themeButton));
+    };
+
     // Multi mode puts several views on screen together, each of them resizable
     addAndMakeVisible(multiButton);
     multiButton.setClickingTogglesState(true);
@@ -89,6 +112,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(loudnessView);
     addChildComponent(radarView);
     addChildComponent(referenceView);
+    addChildComponent(correlometerView);
 
     // The lenses of the waveform: the zoom of the amplitude goes by tenths, and the span of time through its choices
     waveformView.onVerticalStep = [this](int step, bool coarse)
@@ -228,7 +252,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addAndMakeVisible(presetsButton);
     presetsButton.buildMenu = [this](juce::PopupMenu& menu) { buildPresetsMenu(menu); };
 
-    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView })
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView, &correlometerView })
         view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
@@ -255,6 +279,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
 
     // Show the view that the parameter selects, now that the layout is known
     mainViewAttachment.sendInitialUpdate();
+    themeAttachment.sendInitialUpdate();
     refreshViews();
 
     // Discard the peaks that built up while the editor was closed
@@ -406,6 +431,20 @@ void UltimateMeterAudioProcessorEditor::paintBottomBar(juce::Graphics& g, juce::
     g.strokePath(raised, juce::PathStrokeType(1.f));
 }
 
+// The buttons at the right of the header, from the left: the colour scheme, the layout of the views (in multi mode), and multi mode
+void UltimateMeterAudioProcessorEditor::layoutHeaderButtons()
+{
+    auto header = getLocalBounds().removeFromTop(Theme::headerHeight);
+    header.removeFromLeft(juce::roundToInt(nameTabRight() + shoulderWidth) + 4);
+    header.removeFromTop(juce::roundToInt(rimThickness));
+    header.removeFromRight(8);
+    multiButton.setBounds(header.removeFromRight(multiButton.getIdealWidth()).withTrimmedTop(2));
+    if (arrangeButton.isVisible())
+        arrangeButton.setBounds(header.removeFromRight(arrangeButton.getIdealWidth()).withTrimmedTop(2));
+    themeButton.setBounds(header.removeFromRight(themeButton.getIdealWidth()).withTrimmedTop(2));
+    tabs.setBounds(header.removeFromLeft(juce::jmin(header.getWidth(), tabs.getIdealWidth())));
+}
+
 void UltimateMeterAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
@@ -414,10 +453,8 @@ void UltimateMeterAudioProcessorEditor::resized()
     auto header = bounds.removeFromTop(Theme::headerHeight);
     header.removeFromLeft(juce::roundToInt(nameTabRight() + shoulderWidth) + 4);
     header.removeFromTop(juce::roundToInt(rimThickness));
-    header.removeFromRight(8);
-    multiButton.setBounds(header.removeFromRight(multiButton.getIdealWidth()).withTrimmedTop(2));
-    arrangeButton.setBounds(header.removeFromRight(arrangeButton.getIdealWidth()).withTrimmedTop(2));
-    tabs.setBounds(header.removeFromLeft(juce::jmin(header.getWidth(), tabs.getIdealWidth())));
+    (void)header;
+    layoutHeaderButtons();
 
     auto bottomBar = bounds.removeFromBottom(Theme::bottomBarHeight);
     bottomBar.removeFromRight(18); // the corner resizer
@@ -464,6 +501,10 @@ void UltimateMeterAudioProcessorEditor::vBlank(double timestampSeconds)
         lastAudioTime = timestampSeconds;
         return;
     }
+
+    // The colours are shared by every editor that is open, so the one that the mouse is over takes its own back
+    if (appliedTheme >= 0 && Theme::currentTheme != appliedTheme && isMouseOver(true))
+        applyTheme(appliedTheme);
 
     // Skip the frames of the display that come sooner than the refresh rate asks for.
     // The small tolerance keeps the timing jitter of the display from dropping a frame that is due.
@@ -583,6 +624,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
                      audioRunning ? elapsedSeconds : 0.f, readoutDue);
     historyView.record(numNewSlots, juce::jmax(levels.peakDb[0], levels.peakDb[1]), juce::jmax(levels.rmsDb[0], levels.rmsDb[1]));
 
+    correlometerView.update(audioProcessor.correlator);
+
     // What the reference view compares its tracks with: the mix, as it has been playing
     {
         if (audioRunning)
@@ -662,6 +705,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewBalance:     return &balanceView;
         case Parameters::viewLoudnessRound: return &radarView;
         case Parameters::viewReference:   return &referenceView;
+        case Parameters::viewCorrelometer: return &correlometerView;
         default:                          return nullptr;
     }
 }
@@ -913,6 +957,7 @@ void UltimateMeterAudioProcessorEditor::refreshViews()
     tabs.setSelectionMask(tabMask);
     tabs.setSelection((int)std::distance(tabOrder.begin(), std::find(tabOrder.begin(), tabOrder.end(), currentMainView)));
     arrangeButton.setVisible(multiEnabled);
+    layoutHeaderButtons();
 
     // The dip in the bottom bar follows the width of the controls
     repaint(getLocalBounds().removeFromBottom(Theme::bottomBarHeight));
@@ -1202,6 +1247,14 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
                 menu.addSubMenu("Target", targetMenu);
             }
             menu.addItem("Clear the radar", [this] { radarView.clearHistory(); });
+            break;
+
+        case viewCorrelometer:
+            addChoice("Primary", ID::corrPrimary);
+            addChoice("Secondary", ID::corrSecondary);
+            addChoice("Scale", ID::corrScale);
+            addChoice("Bandwidth", ID::corrBandwidth);
+            menu.addItem("Hide the controls", true, correlometerView.areControlsHidden(), [this] { correlometerView.setControlsHidden(!correlometerView.areControlsHidden()); });
             break;
 
         case viewReference:
@@ -1684,4 +1737,15 @@ void UltimateMeterAudioProcessorEditor::exportCurrentSettings()
 
             Presets::save(safe->audioProcessor.apvts.state, file.withFileExtension("umpreset"));
         });
+}
+
+//==============================================================================
+// Changes the colours of the whole interface. The colours are shared by every editor of the plugin that is open,
+// so an editor takes its own scheme back when the mouse comes to it.
+void UltimateMeterAudioProcessorEditor::applyTheme(int index)
+{
+    appliedTheme = index;
+    Theme::apply(index);
+    lookAndFeel.refreshColours();
+    repaint();
 }

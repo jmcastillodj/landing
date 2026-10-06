@@ -35,6 +35,13 @@ namespace Parameters
         inline const juce::String summaryMode { "summaryMode" };
         inline const juce::String balanceDetail { "balanceDetail" };
         inline const juce::String balanceAverage { "balanceAverage" };
+        inline const juce::String theme { "theme" };
+        inline const juce::String corrPrimary { "corrPrimary" };
+        inline const juce::String corrSecondary { "corrSecondary" };
+        inline const juce::String corrScale { "corrScale" };
+        inline const juce::String corrAvgTime { "corrAvgTime" };
+        inline const juce::String corrBands { "corrBands" };
+        inline const juce::String corrBandwidth { "corrBandwidth" };
         inline const juce::String loudnessCustomTarget { "loudnessCustomTarget" };
         inline const juce::String radarSpeed { "radarSpeed" };
         inline const juce::String radarSource { "radarSource" };
@@ -64,7 +71,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference", "Correlometer" };
 
     enum MeterView
     {
@@ -83,7 +90,8 @@ namespace Parameters
         viewWaveform, // added after the others, so that sessions saved before them keep their view
         viewBalance,
         viewLoudnessRound,
-        viewReference
+        viewReference,
+        viewCorrelometer
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };
@@ -127,6 +135,14 @@ namespace Parameters
     // How long the tonal balance remembers: the average moves with the music over this time, or covers everything since the reset
     inline const juce::StringArray balanceAverageNames { "10 s", "30 s", "1 min", "Whole programme" };
     inline constexpr std::array<float, 4> balanceAverageSeconds { 10.f, 30.f, 60.f, 0.f };
+
+    // The correlometer: which two signals it compares, the range that it shows, and how its bands are made
+    inline const juce::StringArray corrSourceNames { "Left", "Right", "Mid", "Side" };
+    inline const juce::StringArray corrScaleNames { "Full", "Pos", "Neg", "Null" };
+    inline constexpr std::array<float, 4> corrScaleLows { -1.f, 0.f, -1.f, -0.25f };
+    inline constexpr std::array<float, 4> corrScaleHighs { 1.f, 1.f, 0.f, 0.25f };
+    inline const juce::StringArray corrBandwidthNames { "Wide", "Normal", "Narrow", "Minimal" };
+    inline constexpr std::array<float, 4> corrBandwidthFactors { 1.6f, 1.f, 0.6f, 0.35f };
 
     // The radar of the loudness: the time one turn takes, and the reading that it draws
     inline const juce::StringArray radarSpeedNames { "30 s", "1 min", "2 min", "5 min" };
@@ -264,6 +280,14 @@ namespace Parameters
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpan, 2 }, "Waveform Span", waveformSpanNames, defaultWaveformSpan, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceDetail, 2 }, "Balance Detail", balanceDetailNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::balanceAverage, 2 }, "Balance Average", balanceAverageNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::theme, 2 }, "Theme", juce::StringArray { "Studio", "Neon Noir", "Emerald", "Aurora", "Ember" }, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::corrPrimary, 2 }, "Correlometer Primary", corrSourceNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::corrSecondary, 2 }, "Correlometer Secondary", corrSourceNames, 1, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::corrScale, 2 }, "Correlometer Scale", corrScaleNames, 0, display));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { ID::corrAvgTime, 2 }, "Correlometer Average Time",
+                                                               juce::NormalisableRange<float>(10.f, 5000.f, 1.f, 0.4f), 1000.f));
+        layout.add(std::make_unique<juce::AudioParameterInt>(juce::ParameterID { ID::corrBands, 2 }, "Correlometer Bands", 4, 64, 32));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::corrBandwidth, 2 }, "Correlometer Bandwidth", corrBandwidthNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSpeed, 2 }, "Radar Speed", radarSpeedNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSource, 2 }, "Radar Reading", radarSourceNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));

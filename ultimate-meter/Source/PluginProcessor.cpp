@@ -31,6 +31,13 @@ UltimateMeterAudioProcessor::UltimateMeterAudioProcessor()
 {
     averagerDurationParameter = apvts.getRawParameterValue(Parameters::ID::averagerDuration);
 
+    {
+        using namespace Parameters;
+        const juce::String ids[] { ID::corrPrimary, ID::corrSecondary, ID::corrBands, ID::corrAvgTime, ID::corrBandwidth };
+        for (size_t i = 0; i < corrParameters.size(); ++i)
+            corrParameters[i] = apvts.getRawParameterValue(ids[i]);
+    }
+
     // A new instance opens with the settings that were saved as the default, if any. A session that is
     // being restored overwrites them afterwards, as the host sets its own state.
     if (Presets::defaultFile().existsAsFile())
@@ -110,6 +117,7 @@ void UltimateMeterAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     juce::ignoreUnused(samplesPerBlock);
 
     references.hostRate.store(sampleRate);
+    correlator.prepare(sampleRate);
     meterEngine.prepare(sampleRate);
     loudnessMeter.prepare(sampleRate);
     truePeakDetector.prepare(sampleRate);
@@ -214,6 +222,18 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
         const int averagerIndex = juce::roundToInt(averagerDurationParameter->load(std::memory_order_relaxed));
         meterEngine.setSlowCorrelationSeconds(Parameters::valueAt(Parameters::averagerDurationsSeconds, averagerIndex));
+
+        // The correlometer takes its settings from the parameters
+        {
+            using namespace Parameters;
+            auto read = [this](size_t i) { return corrParameters[i]->load(std::memory_order_relaxed); };
+            correlator.primary.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
+            correlator.secondary.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
+            correlator.numBands.store(juce::roundToInt(read(2)), std::memory_order_relaxed);
+            correlator.averagingMs.store(read(3), std::memory_order_relaxed);
+            correlator.bandwidthFactor.store(valueAt(corrBandwidthFactors, juce::roundToInt(read(4))), std::memory_order_relaxed);
+        }
+        correlator.process(left, right, numSamples);
 
         // Every sample is measured here, the editor only reads the results
         meterEngine.process(left, right, numSamples);

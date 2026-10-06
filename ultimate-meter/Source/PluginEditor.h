@@ -27,6 +27,7 @@
 #include "Views/LoudnessRadarView.h"
 #include "Views/StereoPanel.h"
 #include "Views/ReferenceView.h"
+#include "Views/CorrelometerView.h"
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
 #include "Views/Timeline.h"
@@ -44,7 +45,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int defaultWidth = 1200, defaultHeight = 580;
+    static constexpr int defaultWidth = 1300, defaultHeight = 580;
     static constexpr int minWidth = 860, minHeight = 480;
     static constexpr int maxWidth = 4000, maxHeight = 4000;
 
@@ -129,6 +130,7 @@ private:
 
     UltimateMeterLookAndFeel lookAndFeel;
     TabBar tabs;
+    TextButtonQuiet themeButton { "Theme" };
     TextButtonQuiet multiButton { "Multi" };
     TextButtonQuiet arrangeButton { "Layout" };
 
@@ -144,6 +146,7 @@ private:
     LoudnessView loudnessView;
     LoudnessRadarView radarView;
     ReferenceView referenceView;
+    CorrelometerView correlometerView;
     float widthAverage = 0.f;
 
     // The side column, which is always showing
@@ -163,14 +166,18 @@ private:
     bool spectrumFrozen = false; // freezing is for a moment's look, so it is not a setting that is saved
 
     juce::ParameterAttachment mainViewAttachment;
+    juce::ParameterAttachment themeAttachment;
+    int appliedTheme = -1;
+    void applyTheme(int index);
+    void layoutHeaderButtons();
 
     // Whether the constructor has finished, before which a change of size is not the user's
     bool isConstructed = false;
 
-    static constexpr int maxRows = 9; // as many as there are views, so that each can have a row of its own
+    static constexpr int maxRows = 10; // as many as there are views, so that each can have a row of its own
     bool multiEnabled = false;
     float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
-    std::array<int, 9> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
+    std::array<int, 10> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;
     juce::StretchableLayoutManager rowLayout;
@@ -184,12 +191,12 @@ private:
     // They are read from the layout after every change, so that adding a view or taking one away does
     // not undo the sizes that were dragged, and they are kept in the session.
     std::array<double, maxRows> rowWeight {};
-    std::array<double, 9> viewWeight {};
+    std::array<double, 10> viewWeight {};
 
     // The place of a view among the views of its row, from the left. Only the order counts.
-    std::array<int, 9> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+    std::array<int, 10> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 
-    std::array<DragHandle, 9> dragHandles;
+    std::array<DragHandle, 10> dragHandles;
     DropOverlay dropOverlay;
     int draggedView = -1;
     Drop currentDrop;

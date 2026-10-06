@@ -9,7 +9,10 @@
 class UltimateMeterLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    UltimateMeterLookAndFeel()
+    UltimateMeterLookAndFeel() { refreshColours(); }
+
+    // The colours of the standard components follow the colour scheme
+    void refreshColours()
     {
         setColour(juce::PopupMenu::backgroundColourId, Theme::menu.withAlpha(menuAlpha));
         setColour(juce::PopupMenu::textColourId, Theme::text);

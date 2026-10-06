@@ -259,17 +259,28 @@ public:
     {
         int width = 0;
         for (auto& name : names)
-            width += Theme::textWidth(tabFont(), name) + 2 * padding;
+            width += Theme::textWidth(Theme::font(11.f, true).withExtraKerningFactor(0.08f), name) + 2 * padding;
         return width;
     }
 
     void resized() override
     {
         // When the room is short the space around the names shrinks, so that every tab stays in view
+        fontScale = 1.f; // the width of the tabs is measured at full size
         int textTotal = 0;
         for (auto& name : names)
             textTotal += Theme::textWidth(tabFont(), name);
-        currentPadding = names.isEmpty() ? padding : juce::jlimit(4, padding, (getWidth() - textTotal) / (2 * names.size()));
+
+        // With many tabs and little room the names are set a little smaller, down to four fifths
+        if (!names.isEmpty() && getWidth() > 0 && textTotal + 2 * 4 * names.size() > getWidth())
+        {
+            fontScale = juce::jlimit(0.8f, 1.f, (float)(getWidth() - 2 * 4 * names.size()) / (float)textTotal);
+            textTotal = 0;
+            for (auto& name : names)
+                textTotal += Theme::textWidth(tabFont(), name);
+        }
+
+        currentPadding = names.isEmpty() ? padding : juce::jlimit(3, padding, (getWidth() - textTotal) / (2 * names.size()));
 
         areas.clear();
         auto bounds = getLocalBounds();
@@ -317,7 +328,8 @@ public:
 private:
     static constexpr int padding = 12;
     int currentPadding = padding;
-    static juce::Font tabFont() { return Theme::font(11.f, true).withExtraKerningFactor(0.08f); }
+    float fontScale = 1.f;
+    juce::Font tabFont() const { return Theme::font(11.f * fontScale, true).withExtraKerningFactor(0.08f * fontScale); }
 
     int tabAt(juce::Point<int> position) const
     {
