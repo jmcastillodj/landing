@@ -565,7 +565,7 @@ void WaveformView::mouseDown(const juce::MouseEvent& e)
 
     if (control < 0 && !e.mods.isPopupMenu())
     {
-        // The button at the corner puts the guide up and takes it along while the mouse is down, and takes it away if it is up
+        // The button at the corner puts the guide up, and takes it away if it is up
         if (guideButtonArea().contains(e.getPosition()))
         {
             if (settings.guideOn)
@@ -575,7 +575,7 @@ void WaveformView::mouseDown(const juce::MouseEvent& e)
             }
             else
             {
-                draggingGuide = true;
+                // It comes back at the level that it was left at, to be dragged by its line
                 if (onGuideChanged)
                     onGuideChanged(true, settings.guideDb);
             }

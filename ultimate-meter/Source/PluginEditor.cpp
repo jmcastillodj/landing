@@ -523,7 +523,7 @@ void UltimateMeterAudioProcessorEditor::resized()
 
     // The stereo panel takes all the room that it can without leaving the level meters too short
     {
-        const int room = side.getHeight() - 132 - 2 * Theme::gap - 150 - 60;
+        const int room = side.getHeight() - 132 - 2 * Theme::gap - 150 - 76;
         const int stereoHeight = room >= StereoPanel::fullHeight ? StereoPanel::fullHeight
                                : room >= StereoPanel::barsHeight + 90 ? room : StereoPanel::barsHeight;
         stereoPanel.setBounds(side.removeFromBottom(stereoHeight));
@@ -531,7 +531,7 @@ void UltimateMeterAudioProcessorEditor::resized()
     side.removeFromBottom(Theme::gap);
     loudnessSummary.setBounds(side.removeFromBottom(132));
     side.removeFromBottom(Theme::gap);
-    monitorStrip.setBounds(side.removeFromBottom(58));
+    monitorStrip.setBounds(side.removeFromBottom(74));
     side.removeFromBottom(Theme::gap);
     levelMeters.setBounds(side);
 

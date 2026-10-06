@@ -107,7 +107,7 @@ namespace Theme
     // Measurements in pixels
     inline constexpr int headerHeight = 38;
     inline constexpr int bottomBarHeight = 26;
-    inline constexpr int sideColumnWidth = 214;
+    inline constexpr int sideColumnWidth = 244;
     inline constexpr int gap = 1;
 
     // The readouts that are numbers change no more often than this, because faster cannot be read

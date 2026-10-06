@@ -37,7 +37,7 @@ public:
             g.setColour(lit ? Theme::accent : hover ? Theme::textDim : Theme::panelEdge);
             g.drawRoundedRectangle(areas[(size_t)i].toFloat().reduced(0.5f), 3.f, 1.f);
 
-            g.setFont(Theme::font(10.5f, true));
+            g.setFont(Theme::font(11.5f, true));
             g.setColour(lit ? juce::Colours::white : Theme::text);
             g.drawText(labels[(size_t)i], areas[(size_t)i], juce::Justification::centred);
         }
@@ -45,10 +45,10 @@ public:
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(8, 2);
-        area.removeFromTop(14);
+        auto area = getLocalBounds().reduced(8, 3);
+        area.removeFromTop(16);
 
-        auto top = area.removeFromTop(area.getHeight() / 2).withTrimmedBottom(2);
+        auto top = area.removeFromTop(area.getHeight() / 2).withTrimmedBottom(3);
         auto bottom = area.withTrimmedTop(1);
 
         const int topWidth = top.getWidth() / 6;

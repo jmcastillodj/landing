@@ -183,7 +183,7 @@ public:
 
     //==============================================================================
     // Audio thread: puts the track in place of the mix when it is being listened to, with a short fade between the two
-    void process(juce::AudioBuffer<float>& buffer, double rate, juce::int64 hostSample, bool hostPlaying)
+    void process(juce::AudioBuffer<float>& buffer, double rate, juce::int64 hostSample, bool hostPlaying, const std::array<float, 4>& monitor = { 1.f, 0.f, 0.f, 1.f })
     {
         const bool wanted = monitoring.load(std::memory_order_relaxed);
         const int slot = juce::jlimit(0, numSlots - 1, activeSlot.load(std::memory_order_relaxed));
@@ -252,6 +252,12 @@ public:
                         position = start;
                 }
             }
+
+            // The reference is monitored as the mix is: in the mid, in the side, in one channel
+            const float monitoredLeft = monitor[0] * referenceLeft + monitor[1] * referenceRight;
+            const float monitoredRight = monitor[2] * referenceLeft + monitor[3] * referenceRight;
+            referenceLeft = monitoredLeft;
+            referenceRight = monitoredRight;
 
             for (int channel = 0; channel < numChannels; ++channel)
             {

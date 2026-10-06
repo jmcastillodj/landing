@@ -231,56 +231,8 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         hostTimeSeconds.store(seconds, std::memory_order_relaxed);
     }
 
-    if (numChannels > 0 && numSamples > 0)
-    {
-        // The meters always analyze a stereo signal, a mono input feeds both sides
-        const float* left = buffer.getReadPointer(0);
-        const float* right = buffer.getReadPointer(juce::jmin(1, numChannels - 1));
-
-        const int averagerIndex = juce::roundToInt(averagerDurationParameter->load(std::memory_order_relaxed));
-        meterEngine.setSlowCorrelationSeconds(Parameters::valueAt(Parameters::averagerDurationsSeconds, averagerIndex));
-
-        // The correlometer takes its settings from the parameters
-        {
-            using namespace Parameters;
-            auto read = [this](size_t i) { return corrParameters[i]->load(std::memory_order_relaxed); };
-            correlator.primary.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
-            correlator.secondary.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
-            correlator.numBands.store(juce::roundToInt(read(2)), std::memory_order_relaxed);
-            correlator.averagingMs.store(read(3), std::memory_order_relaxed);
-            correlator.bandwidthFactor.store(valueAt(corrBandwidthFactors, juce::roundToInt(read(4))), std::memory_order_relaxed);
-        }
-        correlator.process(left, right, numSamples);
-
-        // The VU meter: indices 0 mode, 1 detector, 2 overshoot, 3 speed, 4 window, 5 AES17, 6 weighting, 7 calibration, 11 display, 12-13 trims
-        {
-            using namespace Parameters;
-            auto read = [this](size_t i) { return vuParameters[i]->load(std::memory_order_relaxed); };
-            vuEngine.mode.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
-            vuEngine.ballistics.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
-            vuEngine.overshootPercent.store(read(2), std::memory_order_relaxed);
-            vuEngine.speed.store(read(3), std::memory_order_relaxed);
-            vuEngine.rmsWindowMs.store(read(4), std::memory_order_relaxed);
-            vuEngine.aes17.store(read(5) > 0.5f, std::memory_order_relaxed);
-            vuEngine.weighting.store(juce::roundToInt(read(6)), std::memory_order_relaxed);
-            vuEngine.calibrationDb.store(valueAt(vuCalibrationsDb, juce::roundToInt(read(7))), std::memory_order_relaxed);
-            vuEngine.display.store(juce::roundToInt(read(11)), std::memory_order_relaxed);
-            vuEngine.trimLeftDb.store(read(12), std::memory_order_relaxed);
-            vuEngine.trimRightDb.store(read(13), std::memory_order_relaxed);
-        }
-        vuEngine.process(left, right, numSamples);
-
-        // Every sample is measured here, the editor only reads the results
-        meterEngine.process(left, right, numSamples);
-        loudnessMeter.process(left, right, numSamples);
-        truePeakDetector.process(left, right, numSamples);
-        sampleRingBuffer.write(left, right, numSamples);
-    }
-
-    // A reference track can be heard in place of the mix. The meters have measured the mix before this.
-    references.process(buffer, getSampleRate(), hostSample, hostPlaying);
-
-    // The monitor section: what is heard, which does not touch what the meters measure
+    // The monitor section comes first, before every measurement, so that the meters, the spectrum and the rest all read
+    // what is being monitored: only the side, or the mono sum, or one channel, as it is chosen
     if (numChannels >= 2 && numSamples > 0)
     {
         const int mode = juce::roundToInt(monitorParameters[0]->load(std::memory_order_relaxed));
@@ -328,6 +280,57 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             monitorMatrix = target;
         }
     }
+
+    if (numChannels > 0 && numSamples > 0)
+    {
+        // The meters always analyze a stereo signal, a mono input feeds both sides
+        const float* left = buffer.getReadPointer(0);
+        const float* right = buffer.getReadPointer(juce::jmin(1, numChannels - 1));
+
+        const int averagerIndex = juce::roundToInt(averagerDurationParameter->load(std::memory_order_relaxed));
+        meterEngine.setSlowCorrelationSeconds(Parameters::valueAt(Parameters::averagerDurationsSeconds, averagerIndex));
+
+        // The correlometer takes its settings from the parameters
+        {
+            using namespace Parameters;
+            auto read = [this](size_t i) { return corrParameters[i]->load(std::memory_order_relaxed); };
+            correlator.primary.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
+            correlator.secondary.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
+            correlator.numBands.store(juce::roundToInt(read(2)), std::memory_order_relaxed);
+            correlator.averagingMs.store(read(3), std::memory_order_relaxed);
+            correlator.bandwidthFactor.store(valueAt(corrBandwidthFactors, juce::roundToInt(read(4))), std::memory_order_relaxed);
+        }
+        correlator.process(left, right, numSamples);
+
+        // The VU meter: indices 0 mode, 1 detector, 2 overshoot, 3 speed, 4 window, 5 AES17, 6 weighting, 7 calibration, 11 display, 12-13 trims
+        {
+            using namespace Parameters;
+            auto read = [this](size_t i) { return vuParameters[i]->load(std::memory_order_relaxed); };
+            vuEngine.mode.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
+            vuEngine.ballistics.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
+            vuEngine.overshootPercent.store(read(2), std::memory_order_relaxed);
+            vuEngine.speed.store(read(3), std::memory_order_relaxed);
+            vuEngine.rmsWindowMs.store(read(4), std::memory_order_relaxed);
+            vuEngine.aes17.store(read(5) > 0.5f, std::memory_order_relaxed);
+            vuEngine.weighting.store(juce::roundToInt(read(6)), std::memory_order_relaxed);
+            vuEngine.calibrationDb.store(valueAt(vuCalibrationsDb, juce::roundToInt(read(7))), std::memory_order_relaxed);
+            vuEngine.display.store(juce::roundToInt(read(11)), std::memory_order_relaxed);
+            vuEngine.trimLeftDb.store(read(12), std::memory_order_relaxed);
+            vuEngine.trimRightDb.store(read(13), std::memory_order_relaxed);
+        }
+        vuEngine.process(left, right, numSamples);
+
+        // Every sample is measured here, the editor only reads the results
+        meterEngine.process(left, right, numSamples);
+        loudnessMeter.process(left, right, numSamples);
+        truePeakDetector.process(left, right, numSamples);
+        sampleRingBuffer.write(left, right, numSamples);
+    }
+
+    // A reference track can be heard in place of the mix. The meters have measured the mix before this.
+    references.process(buffer, getSampleRate(), hostSample, hostPlaying, monitorMatrix);
+
+
 
 #if USE_OSC
     // Clear the audio buffer if oscillator synthesis is used
