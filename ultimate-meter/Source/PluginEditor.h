@@ -46,7 +46,7 @@ public:
 private:
     static constexpr int defaultWidth = 1200, defaultHeight = 580;
     static constexpr int minWidth = 860, minHeight = 480;
-    static constexpr int maxWidth = 2600, maxHeight = 1600;
+    static constexpr int maxWidth = 4000, maxHeight = 4000;
 
     // The readings count as silence when no audio has arrived for this long, which is
     // what happens when the host stops calling the processor
@@ -87,6 +87,10 @@ private:
     void askForCustomTarget();
     float currentTargetLufs() const;
     void loadPresetFile(const juce::File& file);
+    void importPreset();
+    void exportPreset(const juce::File& source);
+    void exportCurrentSettings();
+    std::unique_ptr<juce::FileChooser> presetChooser;
 
     // The options of a view, which are in a menu: on the secondary click of the view, and under the Options button
     void buildViewMenu(juce::PopupMenu& menu, int viewId);
@@ -163,7 +167,7 @@ private:
     // Whether the constructor has finished, before which a change of size is not the user's
     bool isConstructed = false;
 
-    static constexpr int maxRows = 4;
+    static constexpr int maxRows = 9; // as many as there are views, so that each can have a row of its own
     bool multiEnabled = false;
     float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
     std::array<int, 9> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
@@ -173,7 +177,7 @@ private:
     std::vector<std::unique_ptr<MultiRow>> multiRows;
     std::vector<std::unique_ptr<juce::StretchableLayoutResizerBar>> rowDividers;
     std::vector<juce::Component*> rowItems;
-    int multiLayoutKey = -1;     // what the layout was last built for
+    juce::int64 multiLayoutKey = -1;     // what the layout was last built for
     std::vector<int> multiRowNumbers; // the row of each of multiRows
 
     // The share of the height that each row has, and of its row's width that each view has (0 for none yet).

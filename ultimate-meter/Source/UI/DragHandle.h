@@ -20,6 +20,7 @@ public:
     std::function<void()> onStart;
     std::function<void(juce::Point<int>)> onMove;
     std::function<void(juce::Point<int>)> onEnd;
+    std::function<void()> onCancel; // a click that was not a drag
 
     void paint(juce::Graphics& g) override
     {
@@ -44,8 +45,12 @@ public:
     void mouseEnter(const juce::MouseEvent&) override { hovered = true; repaint(); }
     void mouseExit(const juce::MouseEvent&) override { hovered = false; repaint(); }
 
-    void mouseDown(const juce::MouseEvent&) override
+    void mouseDown(const juce::MouseEvent& e) override
     {
+        // Only the primary button lifts a view
+        if (e.mods.isPopupMenu() || !e.mods.isLeftButtonDown())
+            return;
+
         dragging = true;
         repaint();
         if (onStart)
@@ -54,14 +59,26 @@ public:
 
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        if (onMove)
+        if (dragging && onMove)
             onMove(e.getEventRelativeTo(getParentComponent()).getPosition());
     }
 
     void mouseUp(const juce::MouseEvent& e) override
     {
+        if (!dragging)
+            return;
+
         dragging = false;
         repaint();
+
+        // A click that did not move leaves everything as it was
+        if (!e.mouseWasDraggedSinceMouseDown() || e.getDistanceFromDragStart() < 6)
+        {
+            if (onCancel)
+                onCancel();
+            return;
+        }
+
         if (onEnd)
             onEnd(e.getEventRelativeTo(getParentComponent()).getPosition());
     }

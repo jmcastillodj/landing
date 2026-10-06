@@ -206,6 +206,12 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             const char* labels[] { "", "Place it before this view", "Place it after this view", "A row of its own above", "A row of its own below" };
             dropOverlay.show(currentDrop.zone, labels[(int)currentDrop.kind]);
         };
+        handle.onCancel = [this]
+        {
+            dropOverlay.show({}, {});
+            dropOverlay.setVisible(false);
+            draggedView = -1;
+        };
         handle.onEnd = [this, viewId](juce::Point<int> position)
         {
             const auto drop = dropAt(position, viewId);
@@ -933,7 +939,7 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
         numRows = juce::jmax(numRows, row + 1);
 
     constexpr int dividerThickness = 7;
-    constexpr int minRowHeight = 90;
+    constexpr int minRowHeight = 70;
     int index = 0;
 
     // The rows that already had a size keep it, and a row that is new takes an equal share of what the others
@@ -1048,9 +1054,10 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
 
     // The layout is built again only when the views or their rows change, so that a dragged
     // divider keeps its place as the window is resized
-    int key = 0;
+    juce::uint64 hash = 1469598103934665603ull;
     for (size_t viewId = 0; viewId < viewRow.size(); ++viewId)
-        key = key * 31 + (viewRow[viewId] + 1) * 8 + viewSlot[viewId];
+        hash = (hash ^ (juce::uint64)((viewRow[viewId] + 1) * 16 + viewSlot[viewId])) * 1099511628211ull;
+    const auto key = (juce::int64)(hash & 0x7fffffffffffffffull);
 
     if (key != multiLayoutKey)
     {
@@ -1298,6 +1305,8 @@ bool UltimateMeterAudioProcessorEditor::isOn(const juce::String& parameterID) co
 void UltimateMeterAudioProcessorEditor::buildPresetsMenu(juce::PopupMenu& menu)
 {
     menu.addItem("Save as a new preset...", [this] { askForPresetName(); });
+    menu.addItem("Import a preset from a file...", [this] { importPreset(); });
+    menu.addItem("Export the current settings to a file...", [this] { exportCurrentSettings(); });
 
     const auto names = Presets::names();
     if (!names.isEmpty())
@@ -1323,6 +1332,11 @@ void UltimateMeterAudioProcessorEditor::buildPresetsMenu(juce::PopupMenu& menu)
         for (const auto& name : names)
             deleteMenu.addItem(name, [name] { Presets::fileOf(name).deleteFile(); });
         menu.addSubMenu("Delete a preset", deleteMenu);
+
+        juce::PopupMenu exportMenu;
+        for (const auto& name : names)
+            exportMenu.addItem(name, [this, name] { exportPreset(Presets::fileOf(name)); });
+        menu.addSubMenu("Export a preset to a file", exportMenu);
     }
 
     menu.addItem("Show the presets folder", [] { Presets::folder().createDirectory(); Presets::folder().revealToUser(); });
@@ -1485,6 +1499,13 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
     }
     else
     {
+        // A view dropped on its own edge, in a row that it shares, comes out into a row of its own beside that row
+        const bool onItself = target == viewId;
+        if (onItself && viewsInRow(viewRow[(size_t)viewId]).size() < 2)
+            return;
+
+        const int ownRow = viewRow[(size_t)viewId];
+
         // Out of its row first, which closes the row if it was alone in it
         viewRow[(size_t)viewId] = -1;
         closeUpRows();
@@ -1495,8 +1516,8 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
 
         if (usedRows >= maxRows)
         {
-            // No row is left to open, so it goes in beside the view that it was dropped on
-            const int row = viewRow[(size_t)target];
+            // No row is left to open, so it goes back in beside the view that it was dropped on
+            const int row = onItself ? ownRow : viewRow[(size_t)target];
             viewRow[(size_t)viewId] = row;
             auto list = viewsInRow(row);
             list.erase(std::remove(list.begin(), list.end(), viewId), list.end());
@@ -1509,7 +1530,7 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
         }
         else
         {
-            const int newRow = viewRow[(size_t)target] + (drop.kind == Drop::rowBelow ? 1 : 0);
+            const int newRow = (onItself ? ownRow : viewRow[(size_t)target]) + (drop.kind == Drop::rowBelow ? 1 : 0);
             for (int& row : viewRow)
                 if (row >= newRow)
                     ++row;
@@ -1595,4 +1616,72 @@ void UltimateMeterAudioProcessorEditor::askForCustomTarget()
         choice->setValueNotifyingHost(choice->convertTo0to1((float)customTargetChoice));
         choice->endChangeGesture();
     }), true);
+}
+
+//==============================================================================
+// Presets travel as files: one can be taken out of the plugin to keep or to send, and one that comes from someone else
+// is read in, applied, and kept with the others
+void UltimateMeterAudioProcessorEditor::importPreset()
+{
+    presetChooser = std::make_unique<juce::FileChooser>("Choose a preset to import", juce::File(), "*.umpreset;*.xml");
+
+    presetChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<UltimateMeterAudioProcessorEditor>(this)](const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (safe == nullptr || !file.existsAsFile())
+                return;
+
+            if (!Presets::load(safe->audioProcessor.apvts, file))
+            {
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Import a preset",
+                                                       "That file is not a preset of ULTIMATE METER.");
+                return;
+            }
+
+            // Kept with the others, under the name of the file
+            const auto target = Presets::fileOf(file.getFileNameWithoutExtension());
+            target.getParentDirectory().createDirectory();
+            file.copyFileTo(target);
+
+            safe->readLayoutFromState();
+            safe->mainViewAttachment.sendInitialUpdate();
+            safe->refreshViews();
+        });
+}
+
+void UltimateMeterAudioProcessorEditor::exportPreset(const juce::File& source)
+{
+    const auto suggested = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(source.getFileNameWithoutExtension() + ".umpreset");
+    presetChooser = std::make_unique<juce::FileChooser>("Export the preset", suggested, "*.umpreset");
+
+    presetChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+        [source](const juce::FileChooser& fc)
+        {
+            auto file = fc.getResult();
+            if (file == juce::File())
+                return;
+
+            file = file.withFileExtension("umpreset");
+            source.copyFileTo(file);
+        });
+}
+
+void UltimateMeterAudioProcessorEditor::exportCurrentSettings()
+{
+    captureSizes();
+    saveMultiState();
+
+    const auto suggested = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("ULTIMATE METER settings.umpreset");
+    presetChooser = std::make_unique<juce::FileChooser>("Export the current settings", suggested, "*.umpreset");
+
+    presetChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+        [safe = juce::Component::SafePointer<UltimateMeterAudioProcessorEditor>(this)](const juce::FileChooser& fc)
+        {
+            auto file = fc.getResult();
+            if (safe == nullptr || file == juce::File())
+                return;
+
+            Presets::save(safe->audioProcessor.apvts.state, file.withFileExtension("umpreset"));
+        });
 }
