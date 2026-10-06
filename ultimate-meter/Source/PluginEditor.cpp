@@ -20,7 +20,9 @@ namespace
     const juce::Identifier multiRowsProperty { "multiRows" };
     const juce::Identifier multiRowWeightsProperty { "multiRowWeights" };
     const juce::Identifier multiViewWeightsProperty { "multiViewWeights" };
-    const juce::Identifier multiSlotsProperty { "multiSlots" };
+    const juce::Identifier multiSlotsProperty { "multiSlots" };   // the column of each view
+    const juce::Identifier multiStacksProperty { "multiStacks" }; // the place of each view in its column
+    const juce::Identifier multiHeightsProperty { "multiHeights" };
 }
 
 namespace
@@ -227,7 +229,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
         handle.onMove = [this, viewId](juce::Point<int> position)
         {
             currentDrop = dropAt(position, viewId);
-            const char* labels[] { "", "Place it before this view", "Place it after this view", "A row of its own above", "A row of its own below" };
+            const char* labels[] { "", "A column to the left", "A column to the right", "A row of its own above", "A row of its own below", "Stack it above this view", "Stack it below this view" };
             dropOverlay.show(currentDrop.zone, labels[(int)currentDrop.kind]);
         };
         handle.onCancel = [this]
@@ -744,8 +746,19 @@ void UltimateMeterAudioProcessorEditor::readLayoutFromState()
 
     {
         const auto slots = juce::StringArray::fromTokens(apvts.state.getProperty(multiSlotsProperty, "").toString(), ",", "");
-        for (int i = 0; i < (int)viewSlot.size(); ++i)
-            viewSlot[(size_t)i] = i < slots.size() ? slots[i].getIntValue() : i;
+        for (int i = 0; i < (int)viewCell.size(); ++i)
+            viewCell[(size_t)i] = i < slots.size() ? slots[i].getIntValue() : i;
+
+        const auto stacks = juce::StringArray::fromTokens(apvts.state.getProperty(multiStacksProperty, "").toString(), ",", "");
+        const auto heights = juce::StringArray::fromTokens(apvts.state.getProperty(multiHeightsProperty, "").toString(), ",", "");
+        viewHeight.fill(0.0);
+        for (int i = 0; i < (int)viewStack.size(); ++i)
+        {
+            viewStack[(size_t)i] = i < stacks.size() ? stacks[i].getIntValue() : 0;
+            viewHeight[(size_t)i] = i < heights.size() ? heights[i].getDoubleValue() : 0.0;
+        }
+
+        normaliseRows();
     }
 
     if (multiMask() == 0)
@@ -772,9 +785,17 @@ void UltimateMeterAudioProcessorEditor::saveMultiState()
     state.setProperty(multiViewWeightsProperty, viewWeights.joinIntoString(","), nullptr);
 
     juce::StringArray slots;
-    for (int slot : viewSlot)
+    for (int slot : viewCell)
         slots.add(juce::String(slot));
     state.setProperty(multiSlotsProperty, slots.joinIntoString(","), nullptr);
+
+    juce::StringArray stacks, heights;
+    for (int stack : viewStack)
+        stacks.add(juce::String(stack));
+    for (double height : viewHeight)
+        heights.add(juce::String(height, 4));
+    state.setProperty(multiStacksProperty, stacks.joinIntoString(","), nullptr);
+    state.setProperty(multiHeightsProperty, heights.joinIntoString(","), nullptr);
 }
 
 // Reads the sizes that the layout has given, as shares
@@ -790,19 +811,41 @@ void UltimateMeterAudioProcessorEditor::captureSizes()
     if (totalHeight <= 0.0)
         return;
 
+    auto viewIdOf = [this](juce::Component* component)
+    {
+        for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
+            if (component == componentOfView(viewId))
+                return viewId;
+        return -1;
+    };
+
     for (size_t i = 0; i < multiRows.size(); ++i)
     {
         rowWeight[(size_t)multiRowNumbers[i]] = (double)multiRows[i]->getHeight() / totalHeight;
 
         double totalWidth = 0.0;
-        for (auto* view : multiRows[i]->getViews())
-            totalWidth += view->getWidth();
+        for (auto& cell : multiRows[i]->getCells())
+            totalWidth += cell->getWidth();
 
-        if (totalWidth > 0.0)
-            for (int viewId = 0; viewId < (int)viewRow.size(); ++viewId)
-                for (auto* view : multiRows[i]->getViews())
-                    if (view == componentOfView(viewId))
-                        viewWeight[(size_t)viewId] = (double)view->getWidth() / totalWidth;
+        for (auto& cell : multiRows[i]->getCells())
+        {
+            double cellHeight = 0.0;
+            for (auto* view : cell->getViews())
+                cellHeight += view->getHeight();
+
+            // Every view of a column has the width of the column, and its own share of the column's height
+            for (auto* view : cell->getViews())
+            {
+                const int viewId = viewIdOf(view);
+                if (viewId < 0)
+                    continue;
+
+                if (totalWidth > 0.0)
+                    viewWeight[(size_t)viewId] = (double)cell->getWidth() / totalWidth;
+                if (cellHeight > 0.0)
+                    viewHeight[(size_t)viewId] = (double)view->getHeight() / cellHeight;
+            }
+        }
     }
 
     saveMultiState();
@@ -827,6 +870,32 @@ void UltimateMeterAudioProcessorEditor::closeUpRows()
             rowWeight[(size_t)newRow] = oldWeights[(size_t)row];
             row = newRow;
         }
+
+    normaliseRows();
+}
+
+// The columns of a row are numbered from the left without a gap, and the views of a column from the top
+void UltimateMeterAudioProcessorEditor::normaliseRows()
+{
+    for (int row = 0; row < maxRows; ++row)
+    {
+        int cell = -1, lastOriginal = -1000000;
+        int stack = 0;
+
+        for (int viewId : viewsInRow(row))
+        {
+            const int original = viewCell[(size_t)viewId];
+            if (original != lastOriginal)
+            {
+                ++cell;
+                lastOriginal = original;
+                stack = 0;
+            }
+
+            viewCell[(size_t)viewId] = cell;
+            viewStack[(size_t)viewId] = stack++;
+        }
+    }
 }
 
 void UltimateMeterAudioProcessorEditor::setMultiMode(bool enabled)
@@ -862,6 +931,9 @@ void UltimateMeterAudioProcessorEditor::toggleViewInMulti(int viewId)
     {
         // A view that comes in gets a row of its own below the others, or joins the last row if there is no more room
         row = juce::jmin(maxRows - 1, 1 + *std::max_element(viewRow.begin(), viewRow.end()));
+        viewCell[(size_t)viewId] = 1000; // after the others of its row, in a column of its own
+        viewStack[(size_t)viewId] = 0;
+        viewWeight[(size_t)viewId] = viewHeight[(size_t)viewId] = 0.0;
         currentMainView = viewId;
     }
 
@@ -878,6 +950,9 @@ void UltimateMeterAudioProcessorEditor::setViewRow(int viewId, int row)
         return;
 
     viewRow[(size_t)viewId] = row;
+    viewCell[(size_t)viewId] = 1000; // a column of its own, after the others
+    viewStack[(size_t)viewId] = 0;
+    viewWeight[(size_t)viewId] = viewHeight[(size_t)viewId] = 0.0;
     closeUpRows();
     saveMultiState();
     refreshViews();
@@ -889,6 +964,7 @@ void UltimateMeterAudioProcessorEditor::applyLayoutPreset(int preset)
     // A new arrangement starts with equal shares
     rowWeight.fill(0.0);
     viewWeight.fill(0.0);
+    viewHeight.fill(0.0);
     int position = 0;
     for (int viewId : tabOrder)
     {
@@ -896,6 +972,8 @@ void UltimateMeterAudioProcessorEditor::applyLayoutPreset(int preset)
             continue;
 
         viewRow[(size_t)viewId] = preset == 1 ? 0 : juce::jmin(maxRows - 1, preset == 2 ? position / 2 : position);
+        viewCell[(size_t)viewId] = preset == 1 ? position : preset == 2 ? position % 2 : 0;
+        viewStack[(size_t)viewId] = 0;
         ++position;
     }
 
@@ -1014,32 +1092,24 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
 
     for (int row = 0; row < numRows; ++row)
     {
-        std::vector<juce::Component*> views;
-        std::vector<double> weights;
-        double known = 0.0;
-        int unknown = 0;
+        std::vector<std::vector<juce::Component*>> cellViews;
+        std::vector<double> widths;
+        std::vector<std::vector<double>> heights;
 
-        for (int viewId : viewsInRow(row))
+        for (const auto& cell : cellsInRow(row))
         {
-            views.push_back(componentOfView(viewId));
-            weights.push_back(viewWeight[(size_t)viewId]);
-            known += viewWeight[(size_t)viewId];
-            unknown += viewWeight[(size_t)viewId] > 0.0 ? 0 : 1;
+            cellViews.emplace_back();
+            heights.emplace_back();
+            for (int viewId : cell)
+            {
+                cellViews.back().push_back(componentOfView(viewId));
+                heights.back().push_back(viewHeight[(size_t)viewId]);
+            }
+            widths.push_back(viewWeight[(size_t)cell.front()]);
         }
 
-        if (views.empty())
+        if (cellViews.empty())
             continue;
-
-        // A view without a size takes an equal share of the row, and the shares are made to add up to one
-        const double fill = known > 0.0 ? known / (double)(views.size() - (size_t)unknown) : 1.0 / (double)views.size();
-        double sum = 0.0;
-        for (auto& weight : weights)
-        {
-            weight = weight > 0.0 ? weight : fill;
-            sum += weight;
-        }
-        for (auto& weight : weights)
-            weight /= sum;
 
         if (!rowItems.empty())
         {
@@ -1053,7 +1123,7 @@ void UltimateMeterAudioProcessorEditor::rebuildMultiLayout()
         multiRows.push_back(std::make_unique<MultiRow>());
         multiRowNumbers.push_back(row);
         addAndMakeVisible(*multiRows.back());
-        multiRows.back()->setViews(views, weights);
+        multiRows.back()->setCells(cellViews, widths, heights);
 
         // A row can be dragged to any share above its minimum
         const double share = (rowWeight[(size_t)row] > 0.0 ? rowWeight[(size_t)row] : newRowShare) / totalWeight;
@@ -1101,7 +1171,7 @@ void UltimateMeterAudioProcessorEditor::layoutViews()
     // divider keeps its place as the window is resized
     juce::uint64 hash = 1469598103934665603ull;
     for (size_t viewId = 0; viewId < viewRow.size(); ++viewId)
-        hash = (hash ^ (juce::uint64)((viewRow[viewId] + 1) * 16 + viewSlot[viewId])) * 1099511628211ull;
+        hash = (hash ^ (juce::uint64)((viewRow[viewId] + 1) * 4096 + viewCell[viewId] * 64 + viewStack[viewId])) * 1099511628211ull;
     const auto key = (juce::int64)(hash & 0x7fffffffffffffffull);
 
     if (key != multiLayoutKey)
@@ -1438,8 +1508,30 @@ std::vector<int> UltimateMeterAudioProcessorEditor::viewsInRow(int row) const
         if (viewRow[(size_t)viewId] == row)
             result.push_back(viewId);
 
-    std::stable_sort(result.begin(), result.end(), [this](int a, int b) { return viewSlot[(size_t)a] < viewSlot[(size_t)b]; });
+    std::stable_sort(result.begin(), result.end(), [this](int a, int b)
+    {
+        return viewCell[(size_t)a] != viewCell[(size_t)b] ? viewCell[(size_t)a] < viewCell[(size_t)b] : viewStack[(size_t)a] < viewStack[(size_t)b];
+    });
     return result;
+}
+
+// The columns of a row from the left, each with its views from the top
+std::vector<std::vector<int>> UltimateMeterAudioProcessorEditor::cellsInRow(int row) const
+{
+    std::vector<std::vector<int>> cells;
+    int lastCell = -1000000;
+
+    for (int viewId : viewsInRow(row))
+    {
+        if (viewCell[(size_t)viewId] != lastCell)
+        {
+            cells.emplace_back();
+            lastCell = viewCell[(size_t)viewId];
+        }
+        cells.back().push_back(viewId);
+    }
+
+    return cells;
 }
 
 // The grips sit at the top of every view, when several views are showing
@@ -1468,8 +1560,9 @@ void UltimateMeterAudioProcessorEditor::updateHandles()
     }
 }
 
-// Where a view that is dragged to a point would land: in the top fifth of another view, in a row above its row, in
-// the bottom fifth in a row below, and in the middle beside it, on its left half or its right half
+// Where a view that is dragged to a point would land, in the view that is under it: at its left or its right edge in a
+// column of its own beside the view, in its upper or lower half stacked with it, and at the very top or bottom of a column
+// in a row of its own above or below the row
 UltimateMeterAudioProcessorEditor::Drop UltimateMeterAudioProcessorEditor::dropAt(juce::Point<int> position, int dragged) const
 {
     Drop drop;
@@ -1490,33 +1583,62 @@ UltimateMeterAudioProcessorEditor::Drop UltimateMeterAudioProcessorEditor::dropA
             if (multiRowNumbers[i] == viewRow[(size_t)target])
                 rowRect = getLocalArea(multiRows[i].get(), multiRows[i]->getLocalBounds());
 
+        const float fx = (float)(position.x - rect.getX()) / (float)juce::jmax(1, rect.getWidth());
         const float fy = (float)(position.y - rect.getY()) / (float)juce::jmax(1, rect.getHeight());
+
+        // Whether the view is at the top or the bottom of its column
+        bool isTop = true, isBottom = true;
+        for (const auto& cell : cellsInRow(viewRow[(size_t)target]))
+            if (std::find(cell.begin(), cell.end(), target) != cell.end())
+            {
+                isTop = cell.front() == target;
+                isBottom = cell.back() == target;
+            }
+
         const bool alone = viewsInRow(viewRow[(size_t)dragged]).size() == 1;
-        const bool sameRow = viewRow[(size_t)target] == viewRow[(size_t)dragged];
+        const bool onItself = target == dragged;
+        const int bandHeight = juce::jmax(36, rowRect.getHeight() / 6);
 
         drop.targetView = target;
 
-        if (fy < 0.2f)
+        if (fy < 0.12f && isTop)
         {
-            if (!(alone && sameRow))
+            if (!(alone && viewRow[(size_t)target] == viewRow[(size_t)dragged]))
             {
                 drop.kind = Drop::rowAbove;
-                drop.zone = rowRect.withHeight(juce::jmax(36, rowRect.getHeight() / 5));
+                drop.zone = rowRect.withHeight(bandHeight);
             }
         }
-        else if (fy > 0.8f)
+        else if (fy > 0.88f && isBottom)
         {
-            if (!(alone && sameRow))
+            if (!(alone && viewRow[(size_t)target] == viewRow[(size_t)dragged]))
             {
                 drop.kind = Drop::rowBelow;
-                drop.zone = rowRect.withTrimmedTop(rowRect.getHeight() - juce::jmax(36, rowRect.getHeight() / 5));
+                drop.zone = rowRect.withTrimmedTop(rowRect.getHeight() - bandHeight);
             }
         }
-        else if (target != dragged)
+        else if (!onItself)
         {
-            const bool left = position.x < rect.getCentreX();
-            drop.kind = left ? Drop::before : Drop::after;
-            drop.zone = left ? rect.withWidth(rect.getWidth() / 2) : rect.withTrimmedLeft(rect.getWidth() / 2);
+            if (fx < 0.22f)
+            {
+                drop.kind = Drop::before;
+                drop.zone = rect.withWidth(juce::jmax(40, rect.getWidth() * 22 / 100));
+            }
+            else if (fx > 0.78f)
+            {
+                drop.kind = Drop::after;
+                drop.zone = rect.withTrimmedLeft(rect.getWidth() - juce::jmax(40, rect.getWidth() * 22 / 100));
+            }
+            else if (fy < 0.5f)
+            {
+                drop.kind = Drop::stackAbove;
+                drop.zone = rect.withHeight(rect.getHeight() / 2).reduced(rect.getWidth() * 22 / 100, 0);
+            }
+            else
+            {
+                drop.kind = Drop::stackBelow;
+                drop.zone = rect.withTrimmedTop(rect.getHeight() / 2).reduced(rect.getWidth() * 22 / 100, 0);
+            }
         }
 
         return drop;
@@ -1528,27 +1650,60 @@ UltimateMeterAudioProcessorEditor::Drop UltimateMeterAudioProcessorEditor::dropA
 void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
 {
     const int target = drop.targetView;
-    if (target < 0 || (target == viewId && (drop.kind == Drop::before || drop.kind == Drop::after)))
+    const bool newRowKind = drop.kind == Drop::rowAbove || drop.kind == Drop::rowBelow;
+    if (target < 0 || drop.kind == Drop::none || (target == viewId && !newRowKind))
         return;
 
     captureSizes();
 
-    if (drop.kind == Drop::before || drop.kind == Drop::after)
+    if (!newRowKind)
     {
+        // The view goes into the columns of the row of the target, which are rebuilt as lists with it in its new place
         const int row = viewRow[(size_t)target];
-        viewRow[(size_t)viewId] = row;
+        viewRow[(size_t)viewId] = -1;
 
-        auto list = viewsInRow(row);
-        list.erase(std::remove(list.begin(), list.end(), viewId), list.end());
-        const auto at = std::find(list.begin(), list.end(), target);
-        list.insert(drop.kind == Drop::before ? at : at + 1, viewId);
+        auto cells = cellsInRow(row);
+        size_t cellIndex = 0, stackIndex = 0;
+        for (size_t c = 0; c < cells.size(); ++c)
+            for (size_t k = 0; k < cells[c].size(); ++k)
+                if (cells[c][k] == target)
+                {
+                    cellIndex = c;
+                    stackIndex = k;
+                }
 
-        // The views of the row share it equally again, as one has come in
-        for (int i = 0; i < (int)list.size(); ++i)
+        switch (drop.kind)
         {
-            viewSlot[(size_t)list[(size_t)i]] = i;
-            viewWeight[(size_t)list[(size_t)i]] = 0.0;
+            case Drop::before:     cells.insert(cells.begin() + (std::ptrdiff_t)cellIndex, std::vector<int> { viewId }); break;
+            case Drop::after:      cells.insert(cells.begin() + (std::ptrdiff_t)cellIndex + 1, std::vector<int> { viewId }); break;
+            case Drop::stackAbove: cells[cellIndex].insert(cells[cellIndex].begin() + (std::ptrdiff_t)stackIndex, viewId); break;
+            case Drop::stackBelow: cells[cellIndex].insert(cells[cellIndex].begin() + (std::ptrdiff_t)stackIndex + 1, viewId); break;
+            default: break;
         }
+
+        for (size_t c = 0; c < cells.size(); ++c)
+            for (size_t k = 0; k < cells[c].size(); ++k)
+            {
+                const int id = cells[c][k];
+                viewRow[(size_t)id] = row;
+                viewCell[(size_t)id] = (int)c;
+                viewStack[(size_t)id] = (int)k;
+            }
+
+        // What has come in shares fairly: the columns of the row, or the views of the column, are equal again
+        if (drop.kind == Drop::before || drop.kind == Drop::after)
+        {
+            for (const auto& cell : cells)
+                for (int id : cell)
+                    viewWeight[(size_t)id] = 0.0;
+        }
+        else
+        {
+            for (int id : cells[cellIndex])
+                viewHeight[(size_t)id] = 0.0;
+        }
+
+        viewWeight[(size_t)viewId] = viewHeight[(size_t)viewId] = 0.0;
     }
     else
     {
@@ -1567,19 +1722,20 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
         for (int row : viewRow)
             usedRows = juce::jmax(usedRows, row + 1);
 
-        if (usedRows >= maxRows)
+        auto putBesideTarget = [&]
         {
-            // No row is left to open, so it goes back in beside the view that it was dropped on
+            // No row is left to open, so it goes back in as a column beside the view that it was dropped on
             const int row = onItself ? ownRow : viewRow[(size_t)target];
             viewRow[(size_t)viewId] = row;
-            auto list = viewsInRow(row);
-            list.erase(std::remove(list.begin(), list.end(), viewId), list.end());
-            list.push_back(viewId);
-            for (int i = 0; i < (int)list.size(); ++i)
-            {
-                viewSlot[(size_t)list[(size_t)i]] = i;
-                viewWeight[(size_t)list[(size_t)i]] = 0.0;
-            }
+            viewCell[(size_t)viewId] = 1000;
+            viewStack[(size_t)viewId] = 0;
+            for (int id : viewsInRow(row))
+                viewWeight[(size_t)id] = 0.0;
+        };
+
+        if (usedRows >= maxRows)
+        {
+            putBesideTarget();
         }
         else
         {
@@ -1592,8 +1748,9 @@ void UltimateMeterAudioProcessorEditor::moveView(int viewId, const Drop& drop)
 
             rowWeight[(size_t)newRow] = 0.0;
             viewRow[(size_t)viewId] = newRow;
-            viewSlot[(size_t)viewId] = 0;
-            viewWeight[(size_t)viewId] = 0.0;
+            viewCell[(size_t)viewId] = 0;
+            viewStack[(size_t)viewId] = 0;
+            viewWeight[(size_t)viewId] = viewHeight[(size_t)viewId] = 0.0;
         }
     }
 

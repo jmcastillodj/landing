@@ -101,7 +101,7 @@ private:
     // Dragging a view by its grip to another place: beside another view in its row, or in a row of its own above or below
     struct Drop
     {
-        enum Kind { none, before, after, rowAbove, rowBelow };
+        enum Kind { none, before, after, rowAbove, rowBelow, stackAbove, stackBelow };
         Kind kind = none;
         int targetView = -1;
         juce::Rectangle<int> zone;
@@ -111,6 +111,8 @@ private:
     void moveView(int viewId, const Drop& drop);
     void updateHandles();
     std::vector<int> viewsInRow(int row) const;
+    std::vector<std::vector<int>> cellsInRow(int row) const;
+    void normaliseRows();
 
     // Draws the header and the bottom bar, whose raised parts meet the recessed ones in S-shaped shoulders
     void paintHeader(juce::Graphics& g, juce::Rectangle<int> area);
@@ -194,7 +196,9 @@ private:
     std::array<double, 10> viewWeight {};
 
     // The place of a view among the views of its row, from the left. Only the order counts.
-    std::array<int, 10> viewSlot { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::array<int, 10> viewCell { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };   // the column of a view in its row, from the left
+    std::array<int, 10> viewStack { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };  // the place of a view in its column, from the top
+    std::array<double, 10> viewHeight {};                             // the share of its column's height that a view has
 
     std::array<DragHandle, 10> dragHandles;
     DropOverlay dropOverlay;
