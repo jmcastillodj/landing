@@ -186,9 +186,18 @@ void ReferenceView::resized()
     area.removeFromTop(6);
     slotsArea = area.removeFromTop(30);
     area.removeFromTop(8);
-    middleArea = area.removeFromTop(juce::jlimit(66, 120, (int)(total * 0.26f)));
-    area.removeFromTop(8);
-    curveArea = area;
+    if (compact)
+    {
+        // Without the correction curve, what is left goes to the two sides
+        middleArea = area;
+        curveArea = {};
+    }
+    else
+    {
+        middleArea = area.removeFromTop(juce::jlimit(66, 120, (int)(total * 0.26f)));
+        area.removeFromTop(8);
+        curveArea = area;
+    }
 
     levelMatchArea = tagsArea.removeFromRight(120).withSizeKeepingCentre(120, 20);
     tagsArea.removeFromRight(10);
@@ -415,6 +424,7 @@ void ReferenceView::paint(juce::Graphics& g)
     }
 
     // The correction curve and the score
+    if (!curveArea.isEmpty())
     {
         g.setColour(Theme::display.darker(0.3f));
         g.fillRect(curveArea);

@@ -85,6 +85,8 @@ public:
     std::atomic<juce::uint64> hostTotalAtBlockEnd { 0 }; // the count of samples written to the ring buffer when that block ended
     std::atomic<double> hostPpq { -1.0 }, hostBpm { 120.0 }, hostBeatsPerBar { 4.0 }; // the musical position, tempo and bar of the host
     std::atomic<double> hostTimeSeconds { -1.0 };
+    // True while the host is stopped and what it sends is silence
+    std::atomic<bool> hostIdle { false };
 
     // Carries every sample to the goniometer and the spectrum analyzer
     SampleRingBuffer sampleRingBuffer;

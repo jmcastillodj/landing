@@ -591,7 +591,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         lastAudioTime = lastUpdateTime;
     }
 
-    const bool audioRunning = lastUpdateTime - lastAudioTime <= silenceTimeoutSeconds;
+    const bool audioRunning = lastUpdateTime - lastAudioTime <= silenceTimeoutSeconds
+                              && !audioProcessor.hostIdle.load(std::memory_order_relaxed);
     if (!audioRunning)
     {
         readings = {};
@@ -703,6 +704,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
                      audioRunning ? elapsedSeconds : 0.f, readoutDue);
     historyView.record(numNewSlots, juce::jmax(levels.peakDb[0], levels.peakDb[1]), juce::jmax(levels.rmsDb[0], levels.rmsDb[1]));
 
+    referenceView.setCompact(multiEnabled);
     correlometerView.update(audioProcessor.correlator);
     vuView.update(audioProcessor.vuEngine.read(), elapsedSeconds);
 

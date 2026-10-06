@@ -35,6 +35,9 @@ public:
 
     void update(const Mix& newMix, float elapsedSeconds);
 
+    // Without the correction curve, for when the view shares the window with others
+    void setCompact(bool shouldBeCompact) { if (compact != shouldBeCompact) { compact = shouldBeCompact; resized(); repaint(); } }
+
     // For the menu of the view
     void chooseFile(int slot);
     void removeSelected();
@@ -70,6 +73,7 @@ private:
 
     // The correction curve and the score
     std::vector<float> correction;
+    bool compact = false;
     float matchPercent = -1.f;
 
     juce::Rectangle<int> tagsArea, waveArea, slotsArea, middleArea, curveArea, levelMatchArea, mirrorArea, freeArea, originalArea, referenceArea;

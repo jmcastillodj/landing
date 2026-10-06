@@ -209,7 +209,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     const int numSamples = buffer.getNumSamples();
 
     juce::int64 hostSample = -1;
-    bool hostPlaying = false;
+    bool hostPlaying = false, hostKnown = false;
     double blockPpq = -1.0, blockBpm = 120.0;
     {
         double seconds = -1.0;
@@ -221,6 +221,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 if (auto samples = position->getTimeInSamples())
                     hostSample = *samples;
                 hostPlaying = position->getIsPlaying();
+                hostKnown = true;
 
                 blockPpq = position->getPpqPosition().orFallback(-1.0);
                 hostPpq.store(blockPpq, std::memory_order_relaxed);
@@ -292,6 +293,17 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         const float* left = buffer.getReadPointer(0);
         const float* right = buffer.getReadPointer(juce::jmin(1, numChannels - 1));
 
+        // A host that is stopped goes on calling with silence. Nothing is measured or recorded then, so that
+        // the loudness, the waveform and the rest stand still. A tail or a live input is not silent, and is measured.
+        const bool idle = hostKnown && !hostPlaying
+                          && juce::FloatVectorOperations::findMaximum(left, numSamples) < 1.0e-5f
+                          && juce::FloatVectorOperations::findMinimum(left, numSamples) > -1.0e-5f
+                          && juce::FloatVectorOperations::findMaximum(right, numSamples) < 1.0e-5f
+                          && juce::FloatVectorOperations::findMinimum(right, numSamples) > -1.0e-5f;
+        hostIdle.store(idle, std::memory_order_relaxed);
+
+        if (! idle)
+        {
         const int averagerIndex = juce::roundToInt(averagerDurationParameter->load(std::memory_order_relaxed));
         meterEngine.setSlowCorrelationSeconds(Parameters::valueAt(Parameters::averagerDurationsSeconds, averagerIndex));
 
@@ -341,6 +353,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         else if (blockPpq < 0.0)
         {
             hostPpqAtBlockEnd.store(-1.0, std::memory_order_relaxed);
+        }
         }
     }
 
