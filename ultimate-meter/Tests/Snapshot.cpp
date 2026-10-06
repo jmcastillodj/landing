@@ -369,7 +369,7 @@ int main(int argc, char* argv[])
         const auto argument = juce::String(argv[i]);
         const auto id = argument.upToFirstOccurrenceOf("=", false, false);
 
-        if (id == "audio" || id == "from" || id == "host")
+        if (id == "audio" || id == "from" || id == "host" || id == "hoststop")
             continue;
 
         // prop.NAME=VALUE sets a property of the saved state, such as prop.multiRowWeights=0.75,0.25,0,0
@@ -441,18 +441,23 @@ int main(int argc, char* argv[])
             info.setPpqPosition((double) samples / rate * bpm / 60.0);
             info.setBpm(bpm);
             info.setTimeSignature(TimeSignature { 4, 4 });
-            info.setIsPlaying(true);
+            info.setIsPlaying(playing.load());
             return info;
         }
 
         std::atomic<juce::int64> playedSamples { 0 };
+        std::atomic<bool> playing { true };
         double rate = 44100.0, bpm = 120.0;
     } fakeHost;
 
-    double hostTempo = 0.0;
+    double hostTempo = 0.0, hostStopAfter = -1.0;
     for (int i = 1; i < argc; ++i)
+    {
         if (juce::String(argv[i]).startsWith("host="))
             hostTempo = juce::String(argv[i]).fromFirstOccurrenceOf("=", false, false).getDoubleValue();
+        if (juce::String(argv[i]).startsWith("hoststop="))
+            hostStopAfter = juce::String(argv[i]).fromFirstOccurrenceOf("=", false, false).getDoubleValue();
+    }
 
     if (hostTempo > 0.0)
     {
@@ -477,6 +482,20 @@ int main(int argc, char* argv[])
 
         while (running.load())
         {
+            // hoststop=SECONDS: the host stops after that long, and sends silence from then on, with its position standing still
+            const bool hostStopped = hostStopAfter >= 0.0 && (double) position / sampleRate > hostStopAfter;
+            fakeHost.playing.store(!hostStopped);
+
+            if (hostStopped)
+            {
+                block.clear();
+                position += blockSize;
+                if (hostTempo > 0.0)
+                    processor.processBlock(block, midi);
+                std::this_thread::sleep_for(std::chrono::duration<double>((double) blockSize / sampleRate));
+                continue;
+            }
+
             if (fileLength > 0)
             {
                 for (int i = 0; i < blockSize; ++i, ++position)

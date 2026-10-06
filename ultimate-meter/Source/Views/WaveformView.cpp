@@ -66,6 +66,12 @@ double WaveformView::viewSampleOfPpq(double ppq) const
     return ringSample - ((double)lastTotalWritten - (double)rawWritten);
 }
 
+double WaveformView::gridEndSample() const
+{
+    const double lastPlayed = settings.ringTotalAtLatest - ((double)lastTotalWritten - (double)rawWritten);
+    return juce::jmin((double)rawWritten, lastPlayed);
+}
+
 void WaveformView::restartSweep(const Settings& newSettings)
 {
     if (newSettings.ppq >= 0.0)
@@ -342,14 +348,21 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
         originBin = (juce::int64)std::floor((double)sweepOriginSample / samplesPerBin);
 
         // Locked to the grid, the picture begins at the start of a stretch of the music, counted in spans from the bar where it started
-        if (settings.gridLocked && settings.sweep && settings.musical && settings.spanBeats > 0.0 && hasMusicalPosition())
+        if (isGridLocked())
         {
-            const double endPpq = ppqOfViewSample((double)rawWritten);
-            const double windowStart = gridOriginPpq + std::floor((endPpq - gridOriginPpq) / settings.spanBeats) * settings.spanBeats;
+            const double endPpq = ppqOfViewSample(gridEndSample());
+
+            // The picture never begins before the bar where the playing began
+            const double windows = std::max(0.0, std::floor((endPpq - gridOriginPpq) / settings.spanBeats + 1.0e-9));
+            const double windowStart = gridOriginPpq + windows * settings.spanBeats;
             originBin = (juce::int64)std::floor(viewSampleOfPpq(windowStart) / samplesPerBin);
         }
 
-        const auto newestSample = (juce::int64)rawWritten - 1;
+        auto newestSample = (juce::int64)rawWritten - 1;
+
+        // A picture locked to the grid ends where the host stopped, and does not take in what comes in after it
+        if (isGridLocked())
+            newestSample = std::max<juce::int64>(0, std::min<juce::int64>(newestSample, (juce::int64)std::floor(gridEndSample()) - 1));
         const auto oldestSample = std::max<juce::int64>(0, (juce::int64)rawWritten - rawCapacity + 4096);
         const auto newestBin = (juce::int64)std::floor((double)newestSample / samplesPerBin);
         const auto newestBinStart = (juce::int64)std::floor((double)newestBin * samplesPerBin);
@@ -429,17 +442,20 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
     binsInSpan = (spanColumns + k - 1) / k;
     originBin = (juce::int64)((double)sweepOriginSample / samplesPerColumn) / k;
 
-    if (settings.gridLocked && settings.sweep && settings.musical && settings.spanBeats > 0.0 && hasMusicalPosition())
+    if (isGridLocked())
     {
-        const double endPpq = ppqOfViewSample((double)rawWritten);
-        const double windowStart = gridOriginPpq + std::floor((endPpq - gridOriginPpq) / settings.spanBeats) * settings.spanBeats;
+        const double endPpq = ppqOfViewSample(gridEndSample());
+        const double windows = std::max(0.0, std::floor((endPpq - gridOriginPpq) / settings.spanBeats + 1.0e-9));
+        const double windowStart = gridOriginPpq + windows * settings.spanBeats;
         originBin = (juce::int64)(viewSampleOfPpq(windowStart) / samplesPerColumn) / k;
     }
 
     if (written == 0)
         return;
 
-    const auto newest = (juce::int64)written - 1;
+    auto newest = (juce::int64)written - 1;
+    if (isGridLocked())
+        newest = std::max<juce::int64>(0, std::min<juce::int64>(newest, (juce::int64)(gridEndSample() / samplesPerColumn) - 1));
     const auto oldest = std::max<juce::int64>(0, (juce::int64)written - maxColumns);
     const int filled = (int)(newest % k) + 1;
     const auto newestBinStart = newest - filled + 1;
@@ -991,12 +1007,12 @@ void WaveformView::paint(juce::Graphics& g)
         // The position in the music of the right edge (scrolling) or of the left edge (sweep)
         // With the position that the host gave, the newest samples have their own place in the music, which puts the lines
         // where the beats are in the sound
-        const double nowPpq = hasMusicalPosition() ? ppqOfViewSample((double)rawWritten)
+        const double nowPpq = hasMusicalPosition() ? ppqOfViewSample(isGridLocked() ? gridEndSample() : (double)rawWritten)
                             : (settings.ppq >= 0.0 ? settings.ppq : juce::jmax(0.0, settings.hostSeconds) * settings.bpm / 60.0);
 
         double leftPpq = settings.sweep ? sweepOriginPpq : nowPpq - spanBeats;
-        if (settings.gridLocked && settings.sweep && hasMusicalPosition())
-            leftPpq = gridOriginPpq + std::floor((nowPpq - gridOriginPpq) / spanBeats) * spanBeats;
+        if (isGridLocked())
+            leftPpq = gridOriginPpq + std::max(0.0, std::floor((nowPpq - gridOriginPpq) / spanBeats + 1.0e-9)) * spanBeats;
 
         g.setFont(Theme::font(10.5f));
         const double firstLine = std::ceil(leftPpq / step - 1.0e-9) * step;

@@ -158,6 +158,10 @@ private:
     bool hasMusicalPosition() const { return settings.ppqAtLatest >= 0.0 && settings.bpm > 0.0; }
     double ppqOfViewSample(double sample) const;
     double viewSampleOfPpq(double ppq) const;
+
+    // For a picture that is locked to the grid, the last sample that belongs to it: where the host was when it last played
+    double gridEndSample() const;
+    bool isGridLocked() const { return settings.gridLocked && settings.sweep && settings.musical && settings.spanBeats > 0.0 && hasMusicalPosition(); }
     int stagnantFrames = 0;
 
     bool viewHovered = false;

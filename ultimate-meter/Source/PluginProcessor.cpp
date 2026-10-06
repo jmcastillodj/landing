@@ -332,8 +332,16 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         sampleRingBuffer.write(left, right, numSamples);
 
         // Where in the music the samples that have just been written end, so that the waveform can put them on the grid
-        hostPpqAtBlockEnd.store(blockPpq >= 0.0 ? blockPpq + (double)numSamples * blockBpm / (60.0 * getSampleRate()) : -1.0, std::memory_order_relaxed);
-        hostTotalAtBlockEnd.store(sampleRingBuffer.getTotalWritten(), std::memory_order_relaxed);
+        // It is kept only while the host plays, so that when it stops the picture stays where it was, with what came after it left out
+        if (hostPlaying && blockPpq >= 0.0)
+        {
+            hostPpqAtBlockEnd.store(blockPpq + (double)numSamples * blockBpm / (60.0 * getSampleRate()), std::memory_order_relaxed);
+            hostTotalAtBlockEnd.store(sampleRingBuffer.getTotalWritten(), std::memory_order_relaxed);
+        }
+        else if (blockPpq < 0.0)
+        {
+            hostPpqAtBlockEnd.store(-1.0, std::memory_order_relaxed);
+        }
     }
 
     // A reference track can be heard in place of the mix. The meters have measured the mix before this.
