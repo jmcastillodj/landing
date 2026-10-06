@@ -51,13 +51,17 @@ public:
         double spanBeats = 0.0, bpm = 120.0, beatsPerBar = 4.0, ppq = -1.0;
         juce::String spanLabel;
 
+        // The guide: a level that is marked across the picture, to line the peaks up with
+        bool guideOn = false;
+        float guideDb = -6.f;
+
         bool operator==(const Settings& other) const
         {
             return channels == other.channels && colours == other.colours && sweep == other.sweep && peakHistory == other.peakHistory
                 && timeCode == other.timeCode && juce::exactlyEqual(zoom, other.zoom) && juce::exactlyEqual(spanSeconds, other.spanSeconds)
                 && juce::exactlyEqual(hostSeconds, other.hostSeconds) && musical == other.musical && juce::exactlyEqual(spanBeats, other.spanBeats)
                 && juce::exactlyEqual(bpm, other.bpm) && juce::exactlyEqual(beatsPerBar, other.beatsPerBar) && juce::exactlyEqual(ppq, other.ppq)
-                && spanLabel == other.spanLabel;
+                && spanLabel == other.spanLabel && guideOn == other.guideOn && juce::exactlyEqual(guideDb, other.guideDb);
         }
     };
 
@@ -70,6 +74,8 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseEnter(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     void clearHistory();
@@ -84,6 +90,7 @@ public:
     // the other way. A coarse step is a whole unit of zoom instead of a tenth, or two choices of span.
     std::function<void(int step, bool coarse)> onVerticalStep, onHorizontalStep;
     std::function<void()> onVerticalReset, onHorizontalReset;
+    std::function<void(bool on, float db)> onGuideChanged; // the guide was switched, or moved to a level
 
     // Gives the colour of a stretch from the powers of its low, middle and high bands
     static juce::Colour colourOfBands(float low, float mid, float high);
@@ -127,6 +134,13 @@ private:
     // Makes the bins of the picture, from the newest, and says where the newest one ends and how wide each is
     void buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan, juce::int64& originBin) const;
     void restartSweep(const Settings& newSettings);
+
+    // The guide at the corner, which is dragged to the level that is wanted
+    juce::Rectangle<int> guideButtonArea() const { return juce::Rectangle<int>(66, 22).withPosition(plot.getX() + 6, plot.getY() + 5); }
+    float guideDbAt(int y) const;
+    float guideYOfLane(int lane, float db) const;
+    bool nearGuide(juce::Point<int> position) const;
+    bool draggingGuide = false;
 
     // Where a sweep began, as a count of samples and a position in the music, which is the left edge of the picture
     juce::int64 sweepOriginSample = 0;

@@ -456,6 +456,45 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
 }
 
 //==============================================================================
+// The level in dB that a height in the picture stands for, in the lane that it falls in
+float WaveformView::guideDbAt(int y) const
+{
+    const int numLanes = (int)lanesOf(settings.channels).size();
+    const float laneHeight = (float)plot.getHeight() / (float)numLanes;
+    const int lane = juce::jlimit(0, numLanes - 1, (int)((float)(y - plot.getY()) / laneHeight));
+    const float midY = (float)plot.getY() + ((float)lane + 0.5f) * laneHeight;
+    const float half = 0.5f * laneHeight - 2.f;
+
+    const float amplitude = std::abs((float)y - midY) / juce::jmax(1.f, half * settings.zoom);
+    return juce::jlimit(-48.f, 0.f, juce::Decibels::gainToDecibels(amplitude, -48.f));
+}
+
+// The height of the guide above the middle of a lane
+float WaveformView::guideYOfLane(int lane, float db) const
+{
+    const int numLanes = (int)lanesOf(settings.channels).size();
+    const float laneHeight = (float)plot.getHeight() / (float)numLanes;
+    const float midY = (float)plot.getY() + ((float)lane + 0.5f) * laneHeight;
+    const float half = 0.5f * laneHeight - 2.f;
+    return midY - half * settings.zoom * juce::Decibels::decibelsToGain(db);
+}
+
+bool WaveformView::nearGuide(juce::Point<int> position) const
+{
+    if (!settings.guideOn || !plot.contains(position))
+        return false;
+
+    const int numLanes = (int)lanesOf(settings.channels).size();
+    const float laneHeight = (float)plot.getHeight() / (float)numLanes;
+    const int lane = juce::jlimit(0, numLanes - 1, (int)((float)(position.y - plot.getY()) / laneHeight));
+    const float upper = guideYOfLane(lane, settings.guideDb);
+    const float midY = (float)plot.getY() + ((float)lane + 0.5f) * laneHeight;
+    const float lower = 2.f * midY - upper;
+
+    return std::abs((float)position.y - upper) < 6.f || std::abs((float)position.y - lower) < 6.f;
+}
+
+//==============================================================================
 // The lenses at the corner of the plot, each a minus, a value, and a plus
 juce::Rectangle<int> WaveformView::controlArea(int control) const
 {
@@ -483,6 +522,12 @@ void WaveformView::mouseMove(const juce::MouseEvent& e)
 {
     int control, part;
     hitTestControl(e.getPosition(), control, part);
+
+    // The guide can be taken by its line, and the button at the corner is for a click
+    const bool onGuide = nearGuide(e.getPosition());
+    const bool onButton = viewHovered && guideButtonArea().contains(e.getPosition());
+    if (control < 0)
+        setMouseCursor(onGuide ? juce::MouseCursor::UpDownResizeCursor : onButton ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 
     if (control != hoverControl || part != hoverPart)
     {
@@ -517,6 +562,33 @@ void WaveformView::mouseDown(const juce::MouseEvent& e)
 {
     int control, part;
     hitTestControl(e.getPosition(), control, part);
+
+    if (control < 0 && !e.mods.isPopupMenu())
+    {
+        // The button at the corner puts the guide up and takes it along while the mouse is down, and takes it away if it is up
+        if (guideButtonArea().contains(e.getPosition()))
+        {
+            if (settings.guideOn)
+            {
+                if (onGuideChanged)
+                    onGuideChanged(false, settings.guideDb);
+            }
+            else
+            {
+                draggingGuide = true;
+                if (onGuideChanged)
+                    onGuideChanged(true, settings.guideDb);
+            }
+            return;
+        }
+
+        if (nearGuide(e.getPosition()))
+        {
+            draggingGuide = true;
+            return;
+        }
+    }
+
     if (control < 0)
         return;
 
@@ -536,6 +608,17 @@ void WaveformView::mouseDown(const juce::MouseEvent& e)
         else if (part == 0 && onHorizontalReset)
             onHorizontalReset();
     }
+}
+
+void WaveformView::mouseDrag(const juce::MouseEvent& e)
+{
+    if (draggingGuide && onGuideChanged)
+        onGuideChanged(true, guideDbAt(e.y));
+}
+
+void WaveformView::mouseUp(const juce::MouseEvent&)
+{
+    draggingGuide = false;
 }
 
 void WaveformView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -803,6 +886,56 @@ void WaveformView::paint(juce::Graphics& g)
             g.setColour(juce::Colours::white.withAlpha(0.6f));
             g.fillRect((float)nowX, (float)plot.getY(), 1.f, (float)plot.getHeight());
         }
+    }
+
+    // The guide: a level across every lane, above and below the middle, with its value at the right
+    if (settings.guideOn)
+    {
+        const float laneHeightGuide = (float)plot.getHeight() / (float)numLanes;
+        g.setFont(Theme::font(10.5f, true));
+        for (int lane = 0; lane < numLanes; ++lane)
+        {
+            const float upper = guideYOfLane(lane, settings.guideDb);
+            const float midY = (float)plot.getY() + ((float)lane + 0.5f) * laneHeightGuide;
+            const float lower = 2.f * midY - upper;
+
+            g.setColour(Theme::second.withAlpha(0.07f));
+            g.fillRect((float)plot.getX(), upper, (float)plot.getWidth(), lower - upper);
+
+            for (float y : { upper, lower })
+            {
+                if (y < (float)plot.getY() || y > (float)plot.getBottom())
+                    continue;
+
+                g.setColour(Theme::second.withAlpha(0.95f));
+                for (float x = (float)plot.getX(); x < (float)plot.getRight(); x += 10.f)
+                    g.fillRect(x, y - 0.75f, 6.f, 1.5f);
+            }
+
+            g.setColour(Theme::second);
+            const auto labelBox = juce::Rectangle<float>(74.f, 15.f).withRightX((float)plot.getRight() - 4.f).withBottomY(juce::jmax(upper - 2.f, (float)plot.getY() + 15.f));
+            g.drawText(juce::String(settings.guideDb, 1).replace("-", juce::String(juce::CharPointer_UTF8("\xe2\x88\x92"))) + " dB", labelBox, juce::Justification::centredRight);
+        }
+    }
+
+    // The button of the guide at the corner, which shows with the lenses
+    if (viewHovered)
+    {
+        const auto area = guideButtonArea();
+        g.setColour(Theme::panel.withAlpha(0.88f));
+        g.fillRoundedRectangle(area.toFloat(), 4.f);
+        g.setColour(settings.guideOn ? Theme::second : Theme::panelEdge);
+        g.drawRoundedRectangle(area.toFloat().reduced(0.5f), 4.f, 1.f);
+
+        // Two dashes at the sides of a line, as the sign of the guide
+        g.setColour(settings.guideOn ? Theme::second : Theme::textDim);
+        const auto icon = area.toFloat().withWidth(22.f).reduced(5.f, 0.f);
+        for (float dy : { -4.f, 4.f })
+            g.fillRect(icon.getX(), icon.getCentreY() + dy - 0.75f, icon.getWidth(), 1.5f);
+
+        g.setFont(Theme::labelFont());
+        g.setColour(settings.guideOn ? Theme::second : Theme::text);
+        g.drawText("GUIDE", area.withTrimmedLeft(24), juce::Justification::centredLeft);
     }
 
     // The time axis: "now" at the right edge when scrolling, and the time from the left in a sweep. In musical time it is

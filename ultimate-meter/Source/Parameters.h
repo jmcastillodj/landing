@@ -37,6 +37,8 @@ namespace Parameters
         inline const juce::String balanceAverage { "balanceAverage" };
         inline const juce::String theme { "theme" };
         inline const juce::String waveformSpanUnit { "waveformSpanUnit" };
+        inline const juce::String waveformGuideOn { "waveformGuideOn" };
+        inline const juce::String waveformGuideDb { "waveformGuideDb" };
         inline const juce::String waveformSpanMusical { "waveformSpanMusical" };
         inline const juce::String vuMode { "vuMode" };
         inline const juce::String vuBallistics { "vuBallistics" };
@@ -357,6 +359,10 @@ namespace Parameters
             boolParam(ID::monPolL, "Polarity Left", false);
             boolParam(ID::monPolR, "Polarity Right", false);
         }
+        layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { ID::waveformGuideOn, 2 }, "Waveform Guide", false,
+            juce::AudioParameterBoolAttributes().withAutomatable(false)));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { ID::waveformGuideDb, 2 }, "Waveform Guide Level",
+                                                               juce::NormalisableRange<float>(-48.f, 0.f, 0.1f), -6.f));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpanUnit, 2 }, "Waveform Span Unit", waveformSpanUnitNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpanMusical, 2 }, "Waveform Musical Span", waveformSpanMusicalNames, defaultWaveformSpanMusical, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSpeed, 2 }, "Radar Speed", radarSpeedNames, 1, display));

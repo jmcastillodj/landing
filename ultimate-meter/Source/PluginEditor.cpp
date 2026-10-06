@@ -158,6 +158,26 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             parameter->endChangeGesture();
         }
     };
+    // The guide of the waveform: on or off, and the level that it is at
+    waveformView.onGuideChanged = [this](bool on, float db)
+    {
+        auto& apvts = audioProcessor.apvts;
+        if (auto* switchParameter = apvts.getParameter(Parameters::ID::waveformGuideOn))
+            if ((switchParameter->getValue() > 0.5f) != on)
+            {
+                switchParameter->beginChangeGesture();
+                switchParameter->setValueNotifyingHost(on ? 1.f : 0.f);
+                switchParameter->endChangeGesture();
+            }
+
+        if (auto* level = apvts.getParameter(Parameters::ID::waveformGuideDb))
+        {
+            level->beginChangeGesture();
+            level->setValueNotifyingHost(level->convertTo0to1(db));
+            level->endChangeGesture();
+        }
+    };
+
     // The same for the span in musical time, which is another list of choices
     auto setMusicalChoice = [this](int index)
     {
@@ -659,6 +679,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         }
         waveformSettings.peakHistory = isOn(ID::waveformPeakHistory);
         waveformSettings.timeCode = isOn(ID::waveformTimecode);
+        waveformSettings.guideOn = isOn(ID::waveformGuideOn);
+        waveformSettings.guideDb = getValue(ID::waveformGuideDb);
         waveformSettings.hostSeconds = audioProcessor.hostTimeSeconds.load(std::memory_order_relaxed);
         waveformView.setSettings(waveformSettings);
     }
@@ -1360,6 +1382,7 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             addChoice("Mode", ID::waveformMode);
             addSwitch("Peak history", ID::waveformPeakHistory);
             addSwitch("Time code", ID::waveformTimecode);
+            addSwitch("Level guide", ID::waveformGuideOn);
             break;
 
         case viewBalance:
