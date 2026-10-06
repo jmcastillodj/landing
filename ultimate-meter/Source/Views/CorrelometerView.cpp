@@ -54,6 +54,16 @@ juce::String CorrelometerView::choiceText(const juce::String& parameterID) const
 void CorrelometerView::update(const MultibandCorrelator& correlator)
 {
     numBands = correlator.read(values);
+
+    // The knobs and buttons show while the mouse is over the view, children included
+    const bool nowHovered = isMouseOver(true);
+    if (nowHovered != hovered)
+    {
+        hovered = nowHovered;
+        averageKnob.setVisible(hovered && !controlsHidden);
+        bandsKnob.setVisible(hovered && !controlsHidden);
+    }
+
     if (isVisible())
         repaint();
 }
@@ -62,6 +72,7 @@ void CorrelometerView::update(const MultibandCorrelator& correlator)
 void CorrelometerView::resized()
 {
     auto area = getLocalBounds().reduced(10, 8);
+    area.removeFromTop(topInset);
     topArea = area.removeFromTop(28);
     area.removeFromTop(6);
 
@@ -99,8 +110,8 @@ void CorrelometerView::resized()
         auto& bandwidth = choices[3];
         bandwidth.titleArea = column.removeFromTop(20);
         bandwidth.buttonArea = column.removeFromTop(26).reduced(8, 0);
-        averageKnob.setVisible(true);
-        bandsKnob.setVisible(true);
+        averageKnob.setVisible(hovered);
+        bandsKnob.setVisible(hovered);
     }
 
     plotArea = area;
@@ -140,9 +151,10 @@ void CorrelometerView::paint(juce::Graphics& g)
         g.drawText(text, area, juce::Justification::centred);
     };
 
-    drawButton(hideArea, controlsHidden ? "SHOW CONTROLS" : "HIDE CONTROLS", false);
+    if (hovered)
+        drawButton(hideArea, controlsHidden ? "SHOW CONTROLS" : "HIDE CONTROLS", false);
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3 && hovered; ++i)
     {
         g.setFont(Theme::font(12.f));
         g.setColour(Theme::textDim);
@@ -150,7 +162,7 @@ void CorrelometerView::paint(juce::Graphics& g)
         drawButton(choices[(size_t)i].buttonArea, choiceText(choices[(size_t)i].parameterID), false);
     }
 
-    if (!controlsHidden)
+    if (!controlsHidden && hovered)
     {
         auto& c = choices[3];
         g.setFont(Theme::font(12.f));
@@ -251,9 +263,9 @@ void CorrelometerView::showChoiceMenu(const juce::String& parameterID, juce::Rec
 
 void CorrelometerView::mouseMove(const juce::MouseEvent& e)
 {
-    bool hand = hideArea.contains(e.getPosition());
+    bool hand = hovered && hideArea.contains(e.getPosition());
     for (size_t i = 0; i < choices.size(); ++i)
-        if (!(i == 3 && controlsHidden) && choices[i].buttonArea.contains(e.getPosition()))
+        if (hovered && !(i == 3 && controlsHidden) && choices[i].buttonArea.contains(e.getPosition()))
             hand = true;
 
     setMouseCursor(hand ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
@@ -264,14 +276,14 @@ void CorrelometerView::mouseDown(const juce::MouseEvent& e)
     if (e.mods.isPopupMenu())
         return;
 
-    if (hideArea.contains(e.getPosition()))
+    if (hovered && hideArea.contains(e.getPosition()))
     {
         setControlsHidden(!controlsHidden);
         return;
     }
 
     for (size_t i = 0; i < choices.size(); ++i)
-        if (!(i == 3 && controlsHidden) && choices[i].buttonArea.contains(e.getPosition()))
+        if (hovered && !(i == 3 && controlsHidden) && choices[i].buttonArea.contains(e.getPosition()))
         {
             showChoiceMenu(choices[i].parameterID, choices[i].buttonArea);
             return;

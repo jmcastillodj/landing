@@ -1663,6 +1663,9 @@ void UltimateMeterAudioProcessorEditor::updateHandles()
             handle.setBounds(bounds);
         handle.setVisible(width >= 40);
     }
+
+    // The correlometer keeps its buttons clear of its grip
+    correlometerView.setTopInset(dragHandles[(size_t)Parameters::viewCorrelometer].isVisible() ? 22 : 0);
 }
 
 // Where a view that is dragged to a point would land, in the view that is under it: at its left or its right edge in a

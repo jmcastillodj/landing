@@ -23,6 +23,9 @@ public:
     void update(const MultibandCorrelator& correlator);
 
     bool areControlsHidden() const { return controlsHidden; }
+
+    // The room at the top that the grip of the view takes in multi mode, so that the buttons are not under it
+    void setTopInset(int inset) { if (inset != topInset) { topInset = inset; resized(); repaint(); } }
     void setControlsHidden(bool shouldHide);
 
 private:
@@ -46,6 +49,8 @@ private:
     std::array<float, MultibandCorrelator::maxBands> values {};
     int numBands = 0;
     bool controlsHidden = false;
+    bool hovered = false; // the controls show only while the mouse is over the view
+    int topInset = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CorrelometerView)
 };
