@@ -294,12 +294,12 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         const float* right = buffer.getReadPointer(juce::jmin(1, numChannels - 1));
 
         // A host that is stopped goes on calling with silence. Nothing is measured or recorded then, so that
-        // the loudness, the waveform and the rest stand still. A tail or a live input is not silent, and is measured.
+        // the loudness, the waveform and the rest stand still. Silence here includes the noise floor, below -60 dBFS. A tail or a live input that is louder is measured.
         const bool idle = hostKnown && !hostPlaying
-                          && juce::FloatVectorOperations::findMaximum(left, numSamples) < 1.0e-5f
-                          && juce::FloatVectorOperations::findMinimum(left, numSamples) > -1.0e-5f
-                          && juce::FloatVectorOperations::findMaximum(right, numSamples) < 1.0e-5f
-                          && juce::FloatVectorOperations::findMinimum(right, numSamples) > -1.0e-5f;
+                          && juce::FloatVectorOperations::findMaximum(left, numSamples) < 1.0e-3f
+                          && juce::FloatVectorOperations::findMinimum(left, numSamples) > -1.0e-3f
+                          && juce::FloatVectorOperations::findMaximum(right, numSamples) < 1.0e-3f
+                          && juce::FloatVectorOperations::findMinimum(right, numSamples) > -1.0e-3f;
         hostIdle.store(idle, std::memory_order_relaxed);
 
         if (! idle)

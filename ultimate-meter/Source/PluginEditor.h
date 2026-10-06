@@ -219,6 +219,7 @@ private:
     // Timing of the updates, in seconds
     double lastUpdateTime = -1.0;
     double lastAudioTime = 0.0;
+    bool hostWasIdle = false;            // so that the radar can start again when the host plays after a stop
 
     // The numbers take new readings ten times a second, and all at the same moment, so that a
     // reading that is shown in two places says the same in both

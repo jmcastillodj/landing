@@ -591,8 +591,13 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         lastAudioTime = lastUpdateTime;
     }
 
-    const bool audioRunning = lastUpdateTime - lastAudioTime <= silenceTimeoutSeconds
-                              && !audioProcessor.hostIdle.load(std::memory_order_relaxed);
+    const bool hostIdle = audioProcessor.hostIdle.load(std::memory_order_relaxed);
+    const bool audioRunning = lastUpdateTime - lastAudioTime <= silenceTimeoutSeconds && !hostIdle;
+
+    // The radar counts a listening, so playing again after a stop starts it again from nothing
+    if (hostWasIdle && !hostIdle)
+        radarView.clearHistory();
+    hostWasIdle = hostIdle;
     if (!audioRunning)
     {
         readings = {};
