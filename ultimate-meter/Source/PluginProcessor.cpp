@@ -210,6 +210,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
     juce::int64 hostSample = -1;
     bool hostPlaying = false;
+    double blockPpq = -1.0, blockBpm = 120.0;
     {
         double seconds = -1.0;
         if (auto* playHead = getPlayHead())
@@ -221,9 +222,13 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                     hostSample = *samples;
                 hostPlaying = position->getIsPlaying();
 
-                hostPpq.store(position->getPpqPosition().orFallback(-1.0), std::memory_order_relaxed);
+                blockPpq = position->getPpqPosition().orFallback(-1.0);
+                hostPpq.store(blockPpq, std::memory_order_relaxed);
                 if (auto bpm = position->getBpm())
+                {
+                    blockBpm = *bpm;
                     hostBpm.store(*bpm, std::memory_order_relaxed);
+                }
                 if (auto signature = position->getTimeSignature())
                     hostBeatsPerBar.store((double)signature->numerator * 4.0 / (double)juce::jmax(1, signature->denominator), std::memory_order_relaxed);
             }
@@ -325,6 +330,10 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         loudnessMeter.process(left, right, numSamples);
         truePeakDetector.process(left, right, numSamples);
         sampleRingBuffer.write(left, right, numSamples);
+
+        // Where in the music the samples that have just been written end, so that the waveform can put them on the grid
+        hostPpqAtBlockEnd.store(blockPpq >= 0.0 ? blockPpq + (double)numSamples * blockBpm / (60.0 * getSampleRate()) : -1.0, std::memory_order_relaxed);
+        hostTotalAtBlockEnd.store(sampleRingBuffer.getTotalWritten(), std::memory_order_relaxed);
     }
 
     // A reference track can be heard in place of the mix. The meters have measured the mix before this.

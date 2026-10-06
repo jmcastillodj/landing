@@ -660,7 +660,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         WaveformView::Settings waveformSettings;
         waveformSettings.channels = getChoice(ID::waveformChannels);
         waveformSettings.colours = getChoice(ID::waveformColours);
-        waveformSettings.sweep = getChoice(ID::waveformMode) == 1;
+        waveformSettings.sweep = getChoice(ID::waveformMode) >= 1;
+        waveformSettings.gridLocked = getChoice(ID::waveformMode) == 2;
         waveformSettings.zoom = getValue(ID::waveformZoom);
         waveformSettings.spanSeconds = valueAt(waveformSpansSeconds, getChoice(ID::waveformSpan));
 
@@ -668,6 +669,8 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         waveformSettings.bpm = juce::jmax(20.0, audioProcessor.hostBpm.load(std::memory_order_relaxed));
         waveformSettings.beatsPerBar = audioProcessor.hostBeatsPerBar.load(std::memory_order_relaxed);
         waveformSettings.ppq = audioProcessor.hostPpq.load(std::memory_order_relaxed);
+        waveformSettings.ppqAtLatest = audioProcessor.hostPpqAtBlockEnd.load(std::memory_order_relaxed);
+        waveformSettings.ringTotalAtLatest = (double)audioProcessor.hostTotalAtBlockEnd.load(std::memory_order_relaxed);
         if (getChoice(ID::waveformSpanUnit) == 1)
         {
             const int choice = getChoice(ID::waveformSpanMusical);
@@ -676,6 +679,12 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
             waveformSettings.spanBeats = entry > 0.0 ? entry : -entry * waveformSettings.beatsPerBar;
             waveformSettings.spanSeconds = (float)(waveformSettings.spanBeats * 60.0 / waveformSettings.bpm);
             waveformSettings.spanLabel = waveformSpanMusicalNames[choice];
+        }
+        else if (waveformSettings.gridLocked)
+        {
+            // Locked to the grid, a span in time is counted in beats too, so that the bars show
+            waveformSettings.musical = true;
+            waveformSettings.spanBeats = (double)waveformSettings.spanSeconds * waveformSettings.bpm / 60.0;
         }
         waveformSettings.peakHistory = isOn(ID::waveformPeakHistory);
         waveformSettings.timeCode = isOn(ID::waveformTimecode);

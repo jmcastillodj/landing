@@ -81,6 +81,8 @@ public:
     void resetLoudness();
 
     // The position of the host's play head in seconds, or -1 if the host gives none. The editor shows it as a time code.
+    std::atomic<double> hostPpqAtBlockEnd { -1.0 }; // the musical position at the end of the latest block, which belongs to hostTotalAtBlockEnd
+    std::atomic<juce::uint64> hostTotalAtBlockEnd { 0 }; // the count of samples written to the ring buffer when that block ended
     std::atomic<double> hostPpq { -1.0 }, hostBpm { 120.0 }, hostBeatsPerBar { 4.0 }; // the musical position, tempo and bar of the host
     std::atomic<double> hostTimeSeconds { -1.0 };
 

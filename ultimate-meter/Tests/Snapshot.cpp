@@ -369,7 +369,7 @@ int main(int argc, char* argv[])
         const auto argument = juce::String(argv[i]);
         const auto id = argument.upToFirstOccurrenceOf("=", false, false);
 
-        if (id == "audio" || id == "from")
+        if (id == "audio" || id == "from" || id == "host")
             continue;
 
         // prop.NAME=VALUE sets a property of the saved state, such as prop.multiRowWeights=0.75,0.25,0,0
@@ -429,6 +429,38 @@ int main(int argc, char* argv[])
             editor->setSize(size.upToFirstOccurrenceOf("x", false, false).getIntValue(), size.fromFirstOccurrenceOf("x", false, false).getIntValue());
     }
 
+    // host=BPM gives the plugin the position of a host that plays the audio in a loop at that tempo, in 4/4
+    struct FakeHost : juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo info;
+            const auto samples = playedSamples.load();
+            info.setTimeInSamples(samples);
+            info.setTimeInSeconds((double) samples / rate);
+            info.setPpqPosition((double) samples / rate * bpm / 60.0);
+            info.setBpm(bpm);
+            info.setTimeSignature(TimeSignature { 4, 4 });
+            info.setIsPlaying(true);
+            return info;
+        }
+
+        std::atomic<juce::int64> playedSamples { 0 };
+        double rate = 44100.0, bpm = 120.0;
+    } fakeHost;
+
+    double hostTempo = 0.0;
+    for (int i = 1; i < argc; ++i)
+        if (juce::String(argv[i]).startsWith("host="))
+            hostTempo = juce::String(argv[i]).fromFirstOccurrenceOf("=", false, false).getDoubleValue();
+
+    if (hostTempo > 0.0)
+    {
+        fakeHost.rate = sampleRate;
+        fakeHost.bpm = hostTempo;
+        processor.setPlayHead(&fakeHost);
+    }
+
     // Stands in for the host's audio thread, and delivers blocks in real time
     std::atomic<bool> running { true };
     std::thread audioThread([&]
@@ -476,6 +508,9 @@ int main(int argc, char* argv[])
                     block.setSample(1, i, swell * (0.7f * (low - high) + sweep) + click + 0.01f * (random.nextFloat() - 0.5f));
                 }
             }
+
+            if (hostTempo > 0.0)
+                fakeHost.playedSamples.store(fileLength > 0 ? (juce::int64) ((fileOffset + position - blockSize) % fileLength) : position - blockSize);
 
             processor.processBlock(block, midi);
             std::this_thread::sleep_until(start + std::chrono::duration<double>((double) position / sampleRate));

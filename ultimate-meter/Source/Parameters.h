@@ -147,7 +147,7 @@ namespace Parameters
     enum WaveformChannels { waveformStereo, waveformLeft, waveformRight, waveformMid, waveformSide, waveformLeftRight, waveformMidSide };
     inline const juce::StringArray waveformColourNames { "Multi-band", "Static", "Color map" };
     enum WaveformColours { colourMultiBand, colourStatic, colourMap };
-    inline const juce::StringArray waveformModeNames { "Scrolling", "Static sweep" };
+    inline const juce::StringArray waveformModeNames { "Scrolling", "Static sweep", "Static (grid)" };
 
     // The span of time that the waveform shows. It has its own, since close up it shows the wave itself.
     inline const juce::StringArray waveformSpanNames { "10 ms", "25 ms", "50 ms", "100 ms", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s", "15 s", "30 s", "60 s" };

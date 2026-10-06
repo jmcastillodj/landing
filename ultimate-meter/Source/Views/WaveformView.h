@@ -52,6 +52,12 @@ public:
         juce::String spanLabel;
 
         // The guide: a level that is marked across the picture, to line the peaks up with
+        // Grid lock: the picture is fixed to the bars of the music, from the left, and the pieces of music that come in
+        // fall in the same places each time. ppqAtLatest is the musical position at the end of the latest samples, which
+        // are the ringTotalAtLatest-th that the plugin has had.
+        bool gridLocked = false;
+        double ppqAtLatest = -1.0, ringTotalAtLatest = 0.0;
+
         bool guideOn = false;
         float guideDb = -6.f;
 
@@ -61,7 +67,8 @@ public:
                 && timeCode == other.timeCode && juce::exactlyEqual(zoom, other.zoom) && juce::exactlyEqual(spanSeconds, other.spanSeconds)
                 && juce::exactlyEqual(hostSeconds, other.hostSeconds) && musical == other.musical && juce::exactlyEqual(spanBeats, other.spanBeats)
                 && juce::exactlyEqual(bpm, other.bpm) && juce::exactlyEqual(beatsPerBar, other.beatsPerBar) && juce::exactlyEqual(ppq, other.ppq)
-                && spanLabel == other.spanLabel && guideOn == other.guideOn && juce::exactlyEqual(guideDb, other.guideDb);
+                && spanLabel == other.spanLabel && guideOn == other.guideOn && juce::exactlyEqual(guideDb, other.guideDb) && gridLocked == other.gridLocked
+                && juce::exactlyEqual(ppqAtLatest, other.ppqAtLatest) && juce::exactlyEqual(ringTotalAtLatest, other.ringTotalAtLatest);
         }
     };
 
@@ -145,6 +152,12 @@ private:
     // Where a sweep began, as a count of samples and a position in the music, which is the left edge of the picture
     juce::int64 sweepOriginSample = 0;
     double sweepOriginPpq = 0.0;
+    double gridOriginPpq = 0.0; // the start of the bar where the picture last began, for a picture that is locked to the grid
+
+    // Between a position in the music and a count of samples of the picture, from the position that the host has given
+    bool hasMusicalPosition() const { return settings.ppqAtLatest >= 0.0 && settings.bpm > 0.0; }
+    double ppqOfViewSample(double sample) const;
+    double viewSampleOfPpq(double ppq) const;
     int stagnantFrames = 0;
 
     bool viewHovered = false;
