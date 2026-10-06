@@ -20,6 +20,7 @@
 #include "Engine/SampleRingBuffer.h"
 #include "Engine/ReferenceManager.h"
 #include "Engine/MultibandCorrelator.h"
+#include "Engine/VuMeterEngine.h"
 
 using namespace juce;
 
@@ -80,13 +81,18 @@ public:
     void resetLoudness();
 
     // The position of the host's play head in seconds, or -1 if the host gives none. The editor shows it as a time code.
+    std::atomic<double> hostPpq { -1.0 }, hostBpm { 120.0 }, hostBeatsPerBar { 4.0 }; // the musical position, tempo and bar of the host
     std::atomic<double> hostTimeSeconds { -1.0 };
 
     // Carries every sample to the goniometer and the spectrum analyzer
     SampleRingBuffer sampleRingBuffer;
     ReferenceManager references;
     MultibandCorrelator correlator;
-    std::array<std::atomic<float>*, 5> corrParameters {}; // primary, secondary, bands, averaging time, bandwidth
+    VuMeterEngine vuEngine;
+    std::array<std::atomic<float>*, 5> corrParameters {};
+    std::array<std::atomic<float>*, 14> vuParameters {}; // the VU meter's settings, in the order of vuIds in the processor
+    std::array<std::atomic<float>*, 5> monitorParameters {}; // mode, mute left, mute right, polarity left, polarity right
+    std::array<float, 4> monitorMatrix { 1.f, 0.f, 0.f, 1.f }; // the routing of the output, which is moved to its next place in each block // primary, secondary, bands, averaging time, bandwidth
 
 #if USE_OSC
     // Oscillator for generating test signals

@@ -32,7 +32,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 10> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference, Parameters::viewCorrelometer,
+    constexpr std::array<int, 11> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference, Parameters::viewCorrelometer, Parameters::viewVu,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -48,6 +48,8 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     balanceView(spectrumSource, p.apvts.state),
     referenceView(p.references, p.apvts.state),
     correlometerView(p.apvts, p.apvts.state),
+    vuView(p.apvts),
+    monitorStrip(p.apvts),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
     themeAttachment(*p.apvts.getParameter(Parameters::ID::theme), [this](float value) { applyTheme(juce::roundToInt(value)); }),
@@ -115,6 +117,15 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(radarView);
     addChildComponent(referenceView);
     addChildComponent(correlometerView);
+    addChildComponent(vuView);
+    addAndMakeVisible(monitorStrip);
+    vuView.onAdvanced = [this](juce::Rectangle<int> area)
+    {
+        juce::PopupMenu menu;
+        buildVuMenu(menu);
+        menu.setLookAndFeel(&lookAndFeel);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(vuView.localAreaToGlobal(area)));
+    };
 
     // The lenses of the waveform: the zoom of the amplitude goes by tenths, and the span of time through its choices
     waveformView.onVerticalStep = [this](int step, bool coarse)
@@ -147,12 +158,31 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
             parameter->endChangeGesture();
         }
     };
-    waveformView.onHorizontalStep = [this, setSpanChoice](int step, bool coarse)
+    // The same for the span in musical time, which is another list of choices
+    auto setMusicalChoice = [this](int index)
+    {
+        if (auto* parameter = audioProcessor.apvts.getParameter(Parameters::ID::waveformSpanMusical))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1((float)juce::jlimit(0, (int)Parameters::waveformSpanMusicalNames.size() - 1, index)));
+            parameter->endChangeGesture();
+        }
+    };
+    waveformView.onHorizontalStep = [this, setSpanChoice, setMusicalChoice](int step, bool coarse)
     {
         // A step towards closer is a shorter span
-        setSpanChoice(getChoice(Parameters::ID::waveformSpan) - step * (coarse ? 2 : 1));
+        if (getChoice(Parameters::ID::waveformSpanUnit) == 1)
+            setMusicalChoice(getChoice(Parameters::ID::waveformSpanMusical) - step * (coarse ? 2 : 1));
+        else
+            setSpanChoice(getChoice(Parameters::ID::waveformSpan) - step * (coarse ? 2 : 1));
     };
-    waveformView.onHorizontalReset = [setSpanChoice] { setSpanChoice(Parameters::defaultWaveformSpan); };
+    waveformView.onHorizontalReset = [this, setSpanChoice, setMusicalChoice]
+    {
+        if (getChoice(Parameters::ID::waveformSpanUnit) == 1)
+            setMusicalChoice(Parameters::defaultWaveformSpanMusical);
+        else
+            setSpanChoice(Parameters::defaultWaveformSpan);
+    };
 
     addAndMakeVisible(levelMeters);
     addAndMakeVisible(loudnessSummary);
@@ -254,7 +284,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addAndMakeVisible(presetsButton);
     presetsButton.buildMenu = [this](juce::PopupMenu& menu) { buildPresetsMenu(menu); };
 
-    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView, &correlometerView })
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView, &correlometerView, &vuView })
         view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
@@ -473,13 +503,15 @@ void UltimateMeterAudioProcessorEditor::resized()
 
     // The stereo panel takes all the room that it can without leaving the level meters too short
     {
-        const int room = side.getHeight() - 132 - 2 * Theme::gap - 150;
+        const int room = side.getHeight() - 132 - 2 * Theme::gap - 150 - 60;
         const int stereoHeight = room >= StereoPanel::fullHeight ? StereoPanel::fullHeight
                                : room >= StereoPanel::barsHeight + 90 ? room : StereoPanel::barsHeight;
         stereoPanel.setBounds(side.removeFromBottom(stereoHeight));
     }
     side.removeFromBottom(Theme::gap);
     loudnessSummary.setBounds(side.removeFromBottom(132));
+    side.removeFromBottom(Theme::gap);
+    monitorStrip.setBounds(side.removeFromBottom(58));
     side.removeFromBottom(Theme::gap);
     levelMeters.setBounds(side);
 
@@ -611,6 +643,20 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
         waveformSettings.sweep = getChoice(ID::waveformMode) == 1;
         waveformSettings.zoom = getValue(ID::waveformZoom);
         waveformSettings.spanSeconds = valueAt(waveformSpansSeconds, getChoice(ID::waveformSpan));
+
+        // In musical time the span is a note or some bars, at the tempo of the host
+        waveformSettings.bpm = juce::jmax(20.0, audioProcessor.hostBpm.load(std::memory_order_relaxed));
+        waveformSettings.beatsPerBar = audioProcessor.hostBeatsPerBar.load(std::memory_order_relaxed);
+        waveformSettings.ppq = audioProcessor.hostPpq.load(std::memory_order_relaxed);
+        if (getChoice(ID::waveformSpanUnit) == 1)
+        {
+            const int choice = getChoice(ID::waveformSpanMusical);
+            const double entry = waveformSpanMusicalBeats[(size_t)juce::jlimit(0, (int)waveformSpanMusicalBeats.size() - 1, choice)];
+            waveformSettings.musical = true;
+            waveformSettings.spanBeats = entry > 0.0 ? entry : -entry * waveformSettings.beatsPerBar;
+            waveformSettings.spanSeconds = (float)(waveformSettings.spanBeats * 60.0 / waveformSettings.bpm);
+            waveformSettings.spanLabel = waveformSpanMusicalNames[choice];
+        }
         waveformSettings.peakHistory = isOn(ID::waveformPeakHistory);
         waveformSettings.timeCode = isOn(ID::waveformTimecode);
         waveformSettings.hostSeconds = audioProcessor.hostTimeSeconds.load(std::memory_order_relaxed);
@@ -627,6 +673,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     historyView.record(numNewSlots, juce::jmax(levels.peakDb[0], levels.peakDb[1]), juce::jmax(levels.rmsDb[0], levels.rmsDb[1]));
 
     correlometerView.update(audioProcessor.correlator);
+    vuView.update(audioProcessor.vuEngine.read(), elapsedSeconds);
 
     // What the reference view compares its tracks with: the mix, as it has been playing
     {
@@ -708,6 +755,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewLoudnessRound: return &radarView;
         case Parameters::viewReference:   return &referenceView;
         case Parameters::viewCorrelometer: return &correlometerView;
+        case Parameters::viewVu:          return &vuView;
         default:                          return nullptr;
     }
 }
@@ -1278,7 +1326,37 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
         case viewWaveform:
             addChoice("Channels", ID::waveformChannels);
             addChoice("Colours", ID::waveformColours);
-            addChoice("Span", ID::waveformSpan);
+            {
+                // The span, in time or in musical time. Choosing one of either list switches to that kind of span.
+                auto setBoth = [&apvts](const juce::String& unitValueID, int index, const juce::String& listID, int unit)
+                {
+                    juce::ignoreUnused(unitValueID);
+                    if (auto* list = apvts.getParameter(listID))
+                    {
+                        list->beginChangeGesture();
+                        list->setValueNotifyingHost(list->convertTo0to1((float)index));
+                        list->endChangeGesture();
+                    }
+                    if (auto* unitParameter = apvts.getParameter(ID::waveformSpanUnit))
+                    {
+                        unitParameter->beginChangeGesture();
+                        unitParameter->setValueNotifyingHost(unitParameter->convertTo0to1((float)unit));
+                        unitParameter->endChangeGesture();
+                    }
+                };
+
+                const bool musicalNow = getChoice(ID::waveformSpanUnit) == 1;
+
+                juce::PopupMenu timeMenu;
+                for (int i = 0; i < waveformSpanNames.size(); ++i)
+                    timeMenu.addItem(waveformSpanNames[i], true, !musicalNow && getChoice(ID::waveformSpan) == i, [setBoth, i] { setBoth({}, i, ID::waveformSpan, 0); });
+                menu.addSubMenu("Span in time", timeMenu);
+
+                juce::PopupMenu musicalMenu;
+                for (int i = 0; i < waveformSpanMusicalNames.size(); ++i)
+                    musicalMenu.addItem(waveformSpanMusicalNames[i], true, musicalNow && getChoice(ID::waveformSpanMusical) == i, [setBoth, i] { setBoth({}, i, ID::waveformSpanMusical, 1); });
+                menu.addSubMenu("Span in bars and notes", musicalMenu);
+            }
             addChoice("Mode", ID::waveformMode);
             addSwitch("Peak history", ID::waveformPeakHistory);
             addSwitch("Time code", ID::waveformTimecode);
@@ -1317,6 +1395,10 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
                 menu.addSubMenu("Target", targetMenu);
             }
             menu.addItem("Clear the radar", [this] { radarView.clearHistory(); });
+            break;
+
+        case viewVu:
+            buildVuMenu(menu);
             break;
 
         case viewCorrelometer:
@@ -1905,4 +1987,73 @@ void UltimateMeterAudioProcessorEditor::applyTheme(int index)
     Theme::apply(index);
     lookAndFeel.refreshColours();
     repaint();
+}
+
+//==============================================================================
+// Every option of the VU meter, behind the badge of the advanced options
+void UltimateMeterAudioProcessorEditor::buildVuMenu(juce::PopupMenu& menu)
+{
+    using namespace Parameters;
+    auto& apvts = audioProcessor.apvts;
+
+    auto setParameter = [&apvts](const juce::String& id, float actual)
+    {
+        if (auto* parameter = apvts.getParameter(id))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(actual));
+            parameter->endChangeGesture();
+        }
+    };
+
+    auto addChoice = [&](const juce::String& title, const juce::String& id)
+    {
+        juce::PopupMenu subMenu;
+        addChoiceItems(subMenu, *apvts.getParameter(id));
+        menu.addSubMenu(title, subMenu);
+    };
+
+    auto addValues = [&](const juce::String& title, const juce::String& id, std::vector<std::pair<juce::String, float>> options)
+    {
+        juce::PopupMenu subMenu;
+        const float current = getValue(id);
+        for (const auto& option : options)
+            subMenu.addItem(option.first, true, std::abs(current - option.second) < 0.051f, [setParameter, id, value = option.second] { setParameter(id, value); });
+        menu.addSubMenu(title, subMenu);
+    };
+
+    auto addSwitch = [&](const juce::String& title, const juce::String& id)
+    {
+        menu.addItem(title, true, isOn(id), [&apvts, id]
+        {
+            auto* parameter = apvts.getParameter(id);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->getValue() > 0.5f ? 0.f : 1.f);
+            parameter->endChangeGesture();
+        });
+    };
+
+    menu.addSectionHeader("Meter");
+    addChoice("Type", ID::vuMode);
+    addChoice("Display", ID::vuDisplay);
+    addChoice("Zero is at", ID::vuCalibration);
+
+    menu.addSectionHeader("VU");
+    addChoice("VU detector", ID::vuBallistics);
+    addValues("Overshoot", ID::vuOvershoot, { { "None (0.3 %)", 0.3f }, { "1.5 %", 1.5f }, { "3 %", 3.f }, { "5 %", 5.f }, { "10 %", 10.f }, { "15 %", 15.f } });
+    addValues("Rise and fall time", ID::vuSpeed, { { "Slow (50 %)", 0.5f }, { "75 %", 0.75f }, { "Standard (100 %)", 1.f }, { "150 %", 1.5f }, { "Fast (200 %)", 2.f } });
+
+    menu.addSectionHeader("RMS and K");
+    addValues("RMS window", ID::vuRmsWindow, { { "50 ms", 50.f }, { "100 ms", 100.f }, { "300 ms", 300.f }, { "600 ms", 600.f }, { "1000 ms", 1000.f } });
+    addSwitch("+3 dB (AES-17)", ID::vuAes17);
+    addChoice("Weighting", ID::vuWeighting);
+
+    menu.addSectionHeader("Display");
+    addSwitch("Hold needle", ID::vuHold);
+    addSwitch("Numbers", ID::vuNumbers);
+    addValues("Clip lamp lights from", ID::vuClipLevel, { { "-12 dBFS", -12.f }, { "-6 dBFS", -6.f }, { "-3 dBFS", -3.f }, { "-1 dBFS", -1.f }, { "-0.5 dBFS", -0.5f } });
+
+    menu.addSectionHeader("Trim of the reading");
+    addValues("Left", ID::vuTrimL, { { "-6 dB", -6.f }, { "-3 dB", -3.f }, { "0 dB", 0.f }, { "+3 dB", 3.f }, { "+6 dB", 6.f } });
+    addValues("Right", ID::vuTrimR, { { "-6 dB", -6.f }, { "-3 dB", -3.f }, { "0 dB", 0.f }, { "+3 dB", 3.f }, { "+6 dB", 6.f } });
 }

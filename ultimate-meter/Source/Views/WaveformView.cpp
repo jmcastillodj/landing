@@ -51,8 +51,36 @@ void WaveformView::resized()
     plot = getLocalBounds().withTrimmedLeft(34).withTrimmedRight(34).withTrimmedTop(8).withTrimmedBottom(20);
 }
 
+// A sweep begins again at the left edge when the host starts to play, and when it jumps back, as it does at the end
+// of a loop, so that a loop is seen from its beginning
+void WaveformView::restartSweep(const Settings& newSettings)
+{
+    sweepOriginSample = (juce::int64)rawWritten;
+    sweepOriginPpq = newSettings.ppq >= 0.0 ? newSettings.ppq : newSettings.hostSeconds * newSettings.bpm / 60.0;
+}
+
 void WaveformView::setSettings(const Settings& newSettings)
 {
+    if (newSettings.hostSeconds >= 0.0 && settings.hostSeconds >= 0.0)
+    {
+        const double delta = newSettings.hostSeconds - settings.hostSeconds;
+        if (delta < -0.05)
+        {
+            restartSweep(newSettings);
+            stagnantFrames = 0;
+        }
+        else if (std::abs(delta) < 1.0e-9)
+        {
+            ++stagnantFrames;
+        }
+        else
+        {
+            if (stagnantFrames >= 3 && delta > 0.0)
+                restartSweep(newSettings);
+            stagnantFrames = 0;
+        }
+    }
+
     if (!(newSettings == settings))
     {
         // The time code changes in every frame, and is all that does, so only its corner is drawn again
@@ -78,6 +106,8 @@ void WaveformView::clearHistory()
     maximum.fill(0.f);
     sumSquares.fill(0.0);
     sumLow = sumMid = sumHigh = 0.0;
+    sweepOriginSample = 0;
+    sweepOriginPpq = 0.0;
     countInColumn = 0;
     phase = 0.0;
     lowState[0] = lowState[1] = highState[0] = highState[1] = 0.0;
@@ -275,9 +305,10 @@ void WaveformView::update()
 
 //==============================================================================
 // The pixels of the picture, from the newest
-void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan) const
+void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan, juce::int64& originBin) const
 {
     bins.clear();
+    originBin = 0;
     const int width = juce::jmax(1, plot.getWidth());
     const double span = (double)settings.spanSeconds;
 
@@ -289,6 +320,7 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
         const double samplesPerBin = span * sampleRate / (double)width;
         binWidth = 1.0;
         binsInSpan = width;
+        originBin = (juce::int64)std::floor((double)sweepOriginSample / samplesPerBin);
 
         const auto newestSample = (juce::int64)rawWritten - 1;
         const auto oldestSample = std::max<juce::int64>(0, (juce::int64)rawWritten - rawCapacity + 4096);
@@ -368,6 +400,7 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
     const int k = juce::jmax(1, juce::roundToInt((double)spanColumns / (double)width));
     binWidth = pixelsPerColumn * k;
     binsInSpan = (spanColumns + k - 1) / k;
+    originBin = (juce::int64)((double)sweepOriginSample / samplesPerColumn) / k;
 
     if (written == 0)
         return;
@@ -597,7 +630,8 @@ void WaveformView::paint(juce::Graphics& g)
     std::vector<Bin> bins;
     double newestRight = (double)plot.getRight(), binWidth = 1.0;
     int binsInSpan = plot.getWidth();
-    buildBins(bins, newestRight, binWidth, binsInSpan);
+    juce::int64 originBin = 0;
+    buildBins(bins, newestRight, binWidth, binsInSpan, originBin);
 
     if (!bins.empty())
     {
@@ -642,7 +676,7 @@ void WaveformView::paint(juce::Graphics& g)
             // Where the bin goes: in a scrolling picture, from the right edge; in a sweep, at its place in the span
             double right;
             if (settings.sweep)
-                right = (double)plot.getX() + (double)(((bin.index % binsInSpan) + binsInSpan) % binsInSpan + 1) * binWidth;
+                right = (double)plot.getX() + (double)((((bin.index - originBin) % binsInSpan) + binsInSpan) % binsInSpan + 1) * binWidth;
             else
                 right = newestRight - (double)b * binWidth;
 
@@ -765,13 +799,57 @@ void WaveformView::paint(juce::Graphics& g)
         // In a sweep, the place that is being written now
         if (settings.sweep)
         {
-            const double nowX = (double)plot.getX() + (double)((bins.front().index % binsInSpan) + 1) * binWidth;
+            const double nowX = (double)plot.getX() + (double)((((bins.front().index - originBin) % binsInSpan) + binsInSpan) % binsInSpan + 1) * binWidth;
             g.setColour(juce::Colours::white.withAlpha(0.6f));
             g.fillRect((float)nowX, (float)plot.getY(), 1.f, (float)plot.getHeight());
         }
     }
 
-    // The time axis: "now" at the right edge when scrolling, and the time from the left in a sweep
+    // The time axis: "now" at the right edge when scrolling, and the time from the left in a sweep. In musical time it is
+    // the grid of the music instead, with lines at the beats or their parts, and bars and beats at the foot.
+    if (settings.musical && settings.spanBeats > 0.0)
+    {
+        const double spanBeats = settings.spanBeats;
+        const double bpb = juce::jmax(1.0, settings.beatsPerBar);
+
+        // The finest step that leaves no more than sixteen lines
+        double step = 4.0 * bpb;
+        for (double candidate : { 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, bpb, 2.0 * bpb, 4.0 * bpb })
+            if (spanBeats / candidate <= 16.0)
+            {
+                step = candidate;
+                break;
+            }
+
+        // The position in the music of the right edge (scrolling) or of the left edge (sweep)
+        const double nowPpq = settings.ppq >= 0.0 ? settings.ppq : juce::jmax(0.0, settings.hostSeconds) * settings.bpm / 60.0;
+        const double leftPpq = settings.sweep ? sweepOriginPpq : nowPpq - spanBeats;
+
+        g.setFont(Theme::font(10.5f));
+        const double firstLine = std::ceil(leftPpq / step - 1.0e-9) * step;
+
+        for (double line = firstLine; line <= leftPpq + spanBeats + 1.0e-9; line += step)
+        {
+            const float x = (float)plot.getX() + (float)plot.getWidth() * (float)((line - leftPpq) / spanBeats);
+
+            const bool onBar = std::abs(std::fmod(line, bpb)) < 1.0e-6 || std::abs(std::fmod(line, bpb) - bpb) < 1.0e-6;
+            const bool onBeat = std::abs(line - std::round(line)) < 1.0e-6;
+
+            g.setColour(juce::Colours::white.withAlpha(onBar ? 0.22f : onBeat ? 0.12f : 0.06f));
+            g.fillRect(x, (float)plot.getY(), 1.f, (float)plot.getHeight());
+
+            if (onBeat && line > -1.0e-6)
+            {
+                const int bar = (int)std::floor(line / bpb + 1.0e-9) + 1;
+                const int beat = (int)std::floor(std::fmod(line, bpb) + 1.0e-6) + 1;
+                g.setColour(onBar ? Theme::text : Theme::textDim);
+                g.drawText(onBar ? juce::String(bar) : juce::String(bar) + "." + juce::String(beat),
+                           juce::Rectangle<float>(40.f, 14.f).withCentre({ juce::jlimit((float)plot.getX() + 14.f, (float)plot.getRight() - 14.f, x), (float)plot.getBottom() + 10.f }),
+                           juce::Justification::centred);
+            }
+        }
+    }
+    else
     {
         const double span = (double)settings.spanSeconds;
         double step = 10.0;
@@ -844,7 +922,7 @@ void WaveformView::paint(juce::Graphics& g)
 
         g.setFont(Theme::font(11.f));
         g.setColour(hovered && hoverPart == 0 ? juce::Colours::white : Theme::text);
-        const auto value = control == 0 ? juce::String(settings.zoom, 1) + "x" : formatSpan(settings.spanSeconds);
+        const auto value = control == 0 ? juce::String(settings.zoom, 1) + "x" : (settings.spanLabel.isNotEmpty() ? settings.spanLabel : formatSpan(settings.spanSeconds));
         g.drawText(value, icon.withTrimmedLeft(16.f), juce::Justification::centred);
     }
 }

@@ -36,6 +36,15 @@ UltimateMeterAudioProcessor::UltimateMeterAudioProcessor()
         const juce::String ids[] { ID::corrPrimary, ID::corrSecondary, ID::corrBands, ID::corrAvgTime, ID::corrBandwidth };
         for (size_t i = 0; i < corrParameters.size(); ++i)
             corrParameters[i] = apvts.getRawParameterValue(ids[i]);
+
+        const juce::String vuIds[] { ID::vuMode, ID::vuBallistics, ID::vuOvershoot, ID::vuSpeed, ID::vuRmsWindow, ID::vuAes17, ID::vuWeighting,
+                                     ID::vuCalibration, ID::vuClipLevel, ID::vuHold, ID::vuNumbers, ID::vuDisplay, ID::vuTrimL, ID::vuTrimR };
+        for (size_t i = 0; i < vuParameters.size(); ++i)
+            vuParameters[i] = apvts.getRawParameterValue(vuIds[i]);
+
+        const juce::String monitorIds[] { ID::monMode, ID::monMuteL, ID::monMuteR, ID::monPolL, ID::monPolR };
+        for (size_t i = 0; i < monitorParameters.size(); ++i)
+            monitorParameters[i] = apvts.getRawParameterValue(monitorIds[i]);
     }
 
     // A new instance opens with the settings that were saved as the default, if any. A session that is
@@ -118,6 +127,8 @@ void UltimateMeterAudioProcessor::prepareToPlay (double sampleRate, int samplesP
 
     references.hostRate.store(sampleRate);
     correlator.prepare(sampleRate);
+    vuEngine.prepare(sampleRate);
+    monitorMatrix = { 1.f, 0.f, 0.f, 1.f };
     meterEngine.prepare(sampleRate);
     loudnessMeter.prepare(sampleRate);
     truePeakDetector.prepare(sampleRate);
@@ -209,6 +220,12 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 if (auto samples = position->getTimeInSamples())
                     hostSample = *samples;
                 hostPlaying = position->getIsPlaying();
+
+                hostPpq.store(position->getPpqPosition().orFallback(-1.0), std::memory_order_relaxed);
+                if (auto bpm = position->getBpm())
+                    hostBpm.store(*bpm, std::memory_order_relaxed);
+                if (auto signature = position->getTimeSignature())
+                    hostBeatsPerBar.store((double)signature->numerator * 4.0 / (double)juce::jmax(1, signature->denominator), std::memory_order_relaxed);
             }
 
         hostTimeSeconds.store(seconds, std::memory_order_relaxed);
@@ -235,6 +252,24 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         }
         correlator.process(left, right, numSamples);
 
+        // The VU meter: indices 0 mode, 1 detector, 2 overshoot, 3 speed, 4 window, 5 AES17, 6 weighting, 7 calibration, 11 display, 12-13 trims
+        {
+            using namespace Parameters;
+            auto read = [this](size_t i) { return vuParameters[i]->load(std::memory_order_relaxed); };
+            vuEngine.mode.store(juce::roundToInt(read(0)), std::memory_order_relaxed);
+            vuEngine.ballistics.store(juce::roundToInt(read(1)), std::memory_order_relaxed);
+            vuEngine.overshootPercent.store(read(2), std::memory_order_relaxed);
+            vuEngine.speed.store(read(3), std::memory_order_relaxed);
+            vuEngine.rmsWindowMs.store(read(4), std::memory_order_relaxed);
+            vuEngine.aes17.store(read(5) > 0.5f, std::memory_order_relaxed);
+            vuEngine.weighting.store(juce::roundToInt(read(6)), std::memory_order_relaxed);
+            vuEngine.calibrationDb.store(valueAt(vuCalibrationsDb, juce::roundToInt(read(7))), std::memory_order_relaxed);
+            vuEngine.display.store(juce::roundToInt(read(11)), std::memory_order_relaxed);
+            vuEngine.trimLeftDb.store(read(12), std::memory_order_relaxed);
+            vuEngine.trimRightDb.store(read(13), std::memory_order_relaxed);
+        }
+        vuEngine.process(left, right, numSamples);
+
         // Every sample is measured here, the editor only reads the results
         meterEngine.process(left, right, numSamples);
         loudnessMeter.process(left, right, numSamples);
@@ -244,6 +279,55 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
     // A reference track can be heard in place of the mix. The meters have measured the mix before this.
     references.process(buffer, getSampleRate(), hostSample, hostPlaying);
+
+    // The monitor section: what is heard, which does not touch what the meters measure
+    if (numChannels >= 2 && numSamples > 0)
+    {
+        const int mode = juce::roundToInt(monitorParameters[0]->load(std::memory_order_relaxed));
+        const float muteL = monitorParameters[1]->load(std::memory_order_relaxed) > 0.5f ? 0.f : 1.f;
+        const float muteR = monitorParameters[2]->load(std::memory_order_relaxed) > 0.5f ? 0.f : 1.f;
+        const float polL = monitorParameters[3]->load(std::memory_order_relaxed) > 0.5f ? -1.f : 1.f;
+        const float polR = monitorParameters[4]->load(std::memory_order_relaxed) > 0.5f ? -1.f : 1.f;
+
+        // The routing, from the input (left, right) to the output (left, right), as { LL, LR, RL, RR }
+        std::array<float, 4> route { 1.f, 0.f, 0.f, 1.f };
+        switch (mode)
+        {
+            case 1: route = { 0.f, 1.f, 1.f, 0.f }; break;      // swapped
+            case 2: route = { 1.f, 0.f, 1.f, 0.f }; break;      // left in both
+            case 3: route = { 0.f, 1.f, 0.f, 1.f }; break;      // right in both
+            case 4: route = { 0.5f, 0.5f, 0.5f, 0.5f }; break;  // mid
+            case 5: route = { 0.5f, -0.5f, 0.5f, -0.5f }; break; // side
+            default: break;
+        }
+
+        const std::array<float, 4> target { route[0] * polL * muteL, route[1] * polR * muteL, route[2] * polL * muteR, route[3] * polR * muteR };
+
+        const bool unchanged = juce::approximatelyEqual(target[0], 1.f) && juce::approximatelyEqual(target[3], 1.f)
+                               && juce::approximatelyEqual(target[1], 0.f) && juce::approximatelyEqual(target[2], 0.f)
+                               && juce::approximatelyEqual(monitorMatrix[0], 1.f) && juce::approximatelyEqual(monitorMatrix[3], 1.f)
+                               && juce::approximatelyEqual(monitorMatrix[1], 0.f) && juce::approximatelyEqual(monitorMatrix[2], 0.f);
+
+        if (!unchanged)
+        {
+            auto* l = buffer.getWritePointer(0);
+            auto* r = buffer.getWritePointer(1);
+            std::array<float, 4> step;
+            for (size_t i = 0; i < 4; ++i)
+                step[i] = (target[i] - monitorMatrix[i]) / (float)numSamples;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float inL = l[i], inR = r[i];
+                l[i] = monitorMatrix[0] * inL + monitorMatrix[1] * inR;
+                r[i] = monitorMatrix[2] * inL + monitorMatrix[3] * inR;
+                for (size_t k = 0; k < 4; ++k)
+                    monitorMatrix[k] += step[k];
+            }
+
+            monitorMatrix = target;
+        }
+    }
 
 #if USE_OSC
     // Clear the audio buffer if oscillator synthesis is used

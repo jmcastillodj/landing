@@ -36,6 +36,27 @@ namespace Parameters
         inline const juce::String balanceDetail { "balanceDetail" };
         inline const juce::String balanceAverage { "balanceAverage" };
         inline const juce::String theme { "theme" };
+        inline const juce::String waveformSpanUnit { "waveformSpanUnit" };
+        inline const juce::String waveformSpanMusical { "waveformSpanMusical" };
+        inline const juce::String vuMode { "vuMode" };
+        inline const juce::String vuBallistics { "vuBallistics" };
+        inline const juce::String vuOvershoot { "vuOvershoot" };
+        inline const juce::String vuSpeed { "vuSpeed" };
+        inline const juce::String vuRmsWindow { "vuRmsWindow" };
+        inline const juce::String vuAes17 { "vuAes17" };
+        inline const juce::String vuWeighting { "vuWeighting" };
+        inline const juce::String vuCalibration { "vuCalibration" };
+        inline const juce::String vuClipLevel { "vuClipLevel" };
+        inline const juce::String vuHold { "vuHold" };
+        inline const juce::String vuNumbers { "vuNumbers" };
+        inline const juce::String vuDisplay { "vuDisplay" };
+        inline const juce::String vuTrimL { "vuTrimL" };
+        inline const juce::String vuTrimR { "vuTrimR" };
+        inline const juce::String monMode { "monMode" };
+        inline const juce::String monMuteL { "monMuteL" };
+        inline const juce::String monMuteR { "monMuteR" };
+        inline const juce::String monPolL { "monPolL" };
+        inline const juce::String monPolR { "monPolR" };
         inline const juce::String corrPrimary { "corrPrimary" };
         inline const juce::String corrSecondary { "corrSecondary" };
         inline const juce::String corrScale { "corrScale" };
@@ -71,7 +92,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference", "Correlometer" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference", "Correlometer", "VU Meter" };
 
     enum MeterView
     {
@@ -91,7 +112,8 @@ namespace Parameters
         viewBalance,
         viewLoudnessRound,
         viewReference,
-        viewCorrelometer
+        viewCorrelometer,
+        viewVu
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };
@@ -130,6 +152,12 @@ namespace Parameters
     inline constexpr std::array<float, 13> waveformSpansSeconds { 0.01f, 0.025f, 0.05f, 0.1f, 0.25f, 0.5f, 1.f, 2.f, 5.f, 10.f, 15.f, 30.f, 60.f };
     inline constexpr int defaultWaveformSpan = 8;
 
+    // The span in musical time: a note, or bars. A note is in beats of a quarter note; a bar is counted in bars (negative).
+    inline const juce::StringArray waveformSpanUnitNames { "Time", "Musical" };
+    inline const juce::StringArray waveformSpanMusicalNames { "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "8 bars", "16 bars" };
+    inline constexpr std::array<double, 9> waveformSpanMusicalBeats { 0.25, 0.5, 1.0, 2.0, -1.0, -2.0, -4.0, -8.0, -16.0 };
+    inline constexpr int defaultWaveformSpanMusical = 5;
+
     // What the numbers in the side column are: the loudness, or the RMS levels
     inline const juce::StringArray balanceDetailNames { "Broad", "Fine" };
     // How long the tonal balance remembers: the average moves with the music over this time, or covers everything since the reset
@@ -143,6 +171,16 @@ namespace Parameters
     inline constexpr std::array<float, 4> corrScaleHighs { 1.f, 1.f, 0.f, 0.25f };
     inline const juce::StringArray corrBandwidthNames { "Wide", "Normal", "Narrow", "Minimal" };
     inline constexpr std::array<float, 4> corrBandwidthFactors { 1.6f, 1.f, 0.6f, 0.35f };
+
+    // The VU meter: what it detects, the three ways that the VU is made, what is shown, and where zero is
+    inline const juce::StringArray vuModeNames { "VU", "RMS", "Nordic (Type I)", "DIN (Type I)", "BBC (Type IIa)", "EBU (Type IIb)" };
+    inline const juce::StringArray vuModeShortNames { "VU", "RMS", "NORDIC", "DIN", "BBC", "EBU" };
+    inline const juce::StringArray vuBallisticsNames { "Average", "Mean square", "Both" };
+    inline const juce::StringArray vuWeightingNames { "Flat", "A", "C", "K" };
+    inline const juce::StringArray vuCalibrationNames { "-24 dBFS", "-22 dBFS", "-20 dBFS (K-20)", "-18 dBFS (EBU)", "-16 dBFS", "-14 dBFS (K-14)", "-12 dBFS (K-12)" };
+    inline constexpr std::array<float, 7> vuCalibrationsDb { -24.f, -22.f, -20.f, -18.f, -16.f, -14.f, -12.f };
+    inline const juce::StringArray vuDisplayNames { "Dual L/R", "Dual M/S", "Single" };
+    inline const juce::StringArray monitorModeNames { "LR", "RL", "L", "R", "M", "S" };
 
     // The radar of the loudness: the time one turn takes, and the reading that it draws
     inline const juce::StringArray radarSpeedNames { "30 s", "1 min", "2 min", "5 min" };
@@ -288,6 +326,39 @@ namespace Parameters
                                                                juce::NormalisableRange<float>(10.f, 5000.f, 1.f, 0.4f), 1000.f));
         layout.add(std::make_unique<juce::AudioParameterInt>(juce::ParameterID { ID::corrBands, 2 }, "Correlometer Bands", 4, 64, 32));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::corrBandwidth, 2 }, "Correlometer Bandwidth", corrBandwidthNames, 0, display));
+        {
+            auto boolParam = [&layout](const juce::String& id, const juce::String& name, bool defaultValue, bool automatable = true)
+            {
+                layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { id, 2 }, name, defaultValue,
+                                                                      juce::AudioParameterBoolAttributes().withAutomatable(automatable)));
+            };
+            auto floatParam = [&layout](const juce::String& id, const juce::String& name, float low, float high, float step, float defaultValue)
+            {
+                layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { id, 2 }, name, juce::NormalisableRange<float>(low, high, step), defaultValue));
+            };
+
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::vuMode, 2 }, "VU Mode", vuModeNames, 0, display));
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::vuBallistics, 2 }, "VU Detector", vuBallisticsNames, 0, display));
+            floatParam(ID::vuOvershoot, "VU Overshoot", 0.3f, 15.f, 0.1f, 1.5f);
+            floatParam(ID::vuSpeed, "VU Speed", 0.5f, 2.f, 0.05f, 1.f);
+            floatParam(ID::vuRmsWindow, "RMS Window", 20.f, 1000.f, 1.f, 300.f);
+            boolParam(ID::vuAes17, "RMS +3 dB (AES17)", false);
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::vuWeighting, 2 }, "VU Weighting", vuWeightingNames, 0, display));
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::vuCalibration, 2 }, "VU Calibration", vuCalibrationNames, 3, display));
+            floatParam(ID::vuClipLevel, "VU Clip LED Level", -12.f, 0.f, 0.5f, -1.f);
+            boolParam(ID::vuHold, "VU Hold Needle", true);
+            boolParam(ID::vuNumbers, "VU Numbers", true);
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::vuDisplay, 2 }, "VU Display", vuDisplayNames, 0, display));
+            floatParam(ID::vuTrimL, "VU Trim Left", -12.f, 12.f, 0.1f, 0.f);
+            floatParam(ID::vuTrimR, "VU Trim Right", -12.f, 12.f, 0.1f, 0.f);
+            layout.add(std::make_unique<Choice>(juce::ParameterID { ID::monMode, 2 }, "Monitor", monitorModeNames, 0, display));
+            boolParam(ID::monMuteL, "Mute Left", false);
+            boolParam(ID::monMuteR, "Mute Right", false);
+            boolParam(ID::monPolL, "Polarity Left", false);
+            boolParam(ID::monPolR, "Polarity Right", false);
+        }
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpanUnit, 2 }, "Waveform Span Unit", waveformSpanUnitNames, 0, display));
+        layout.add(std::make_unique<Choice>(juce::ParameterID { ID::waveformSpanMusical, 2 }, "Waveform Musical Span", waveformSpanMusicalNames, defaultWaveformSpanMusical, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSpeed, 2 }, "Radar Speed", radarSpeedNames, 1, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::radarSource, 2 }, "Radar Reading", radarSourceNames, 0, display));
         layout.add(std::make_unique<Choice>(juce::ParameterID { ID::summaryMode, 2 }, "Readout", summaryModeNames, 0, display));

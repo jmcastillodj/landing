@@ -234,8 +234,25 @@ public:
         if (selected != index)
         {
             selected = index;
+            showTab(index);
             repaint();
         }
+    }
+
+    // When the tabs do not all fit they scroll, and this brings one into view
+    void showTab(int index)
+    {
+        if (!overflowing || index < 0 || index >= areas.size())
+            return;
+
+        const auto area = areas[index];
+        if (area.getX() < (int)scrollX)
+            scrollX = (float)area.getX();
+        else if (area.getRight() > (int)scrollX + getWidth())
+            scrollX = (float)(area.getRight() - getWidth());
+
+        clampScroll();
+        repaint();
     }
 
     // In multi mode every tab can be on at once, and a click toggles the tab instead of choosing it
@@ -282,15 +299,33 @@ public:
 
         currentPadding = names.isEmpty() ? padding : juce::jlimit(3, padding, (getWidth() - textTotal) / (2 * names.size()));
 
+        // Where even the smallest names do not fit, they keep a readable size and the row scrolls
+        overflowing = !names.isEmpty() && getWidth() > 0 && textTotal + 2 * currentPadding * names.size() > getWidth() + 1;
+        if (overflowing)
+        {
+            fontScale = 0.9f;
+            currentPadding = 8;
+        }
+
         areas.clear();
-        auto bounds = getLocalBounds();
+        int x = 0;
         for (auto& name : names)
-            areas.add(bounds.removeFromLeft(Theme::textWidth(tabFont(), name) + 2 * currentPadding));
+        {
+            const int width = Theme::textWidth(tabFont(), name) + 2 * currentPadding;
+            areas.add(juce::Rectangle<int>(x, 0, width, getHeight()));
+            x += width;
+        }
+
+        contentWidth = x;
+        clampScroll();
     }
 
     void paint(juce::Graphics& g) override
     {
         g.setFont(tabFont());
+
+        g.saveState();
+        g.addTransform(juce::AffineTransform::translation(-scrollX, 0.f));
 
         for (int index = 0; index < names.size(); ++index)
         {
@@ -304,13 +339,70 @@ public:
                 g.fillRect(areas[index].reduced(currentPadding, 0).removeFromBottom(2));
             }
         }
+
+        g.restoreState();
+
+        // The bar for sliding along the tabs, when they do not all fit
+        if (overflowing)
+        {
+            g.setColour(Theme::grid);
+            g.fillRect(barArea());
+            g.setColour(draggingBar || barHovered ? Theme::accent : Theme::textFaint);
+            g.fillRoundedRectangle(thumbArea().toFloat(), 1.5f);
+        }
     }
 
-    void mouseMove(const juce::MouseEvent& e) override { setHovered(tabAt(e.getPosition())); }
-    void mouseExit(const juce::MouseEvent&) override { setHovered(-1); }
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
+    {
+        if (!overflowing)
+            return;
+
+        const float delta = wheel.deltaX != 0.f ? wheel.deltaX : wheel.deltaY;
+        scrollX -= delta * 400.f;
+        clampScroll();
+        repaint();
+    }
+
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (draggingBar)
+        {
+            scrollX = dragStartScroll + (float)e.getDistanceFromDragStartX() * (float)contentWidth / (float)juce::jmax(1, getWidth());
+            clampScroll();
+            repaint();
+        }
+    }
+
+    void mouseUp(const juce::MouseEvent&) override { draggingBar = false; repaint(); }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        const bool onBar = overflowing && e.y >= getHeight() - 10;
+        if (onBar != barHovered)
+        {
+            barHovered = onBar;
+            repaint();
+        }
+        setHovered(onBar ? -1 : tabAt(e.getPosition()));
+    }
+
+    void mouseExit(const juce::MouseEvent&) override { barHovered = false; setHovered(-1); }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        // The bar at the foot: a click on it centres the thumb there, and it can be dragged
+        if (overflowing && e.y >= getHeight() - 10)
+        {
+            if (!thumbArea().contains(e.getPosition()))
+                scrollX = ((float)e.x / (float)juce::jmax(1, getWidth())) * (float)contentWidth - (float)getWidth() * 0.5f;
+
+            clampScroll();
+            draggingBar = true;
+            dragStartScroll = scrollX;
+            repaint();
+            return;
+        }
+
         const int index = tabAt(e.getPosition());
         if (index >= 0 && multi)
         {
@@ -333,11 +425,26 @@ private:
 
     int tabAt(juce::Point<int> position) const
     {
+        const auto inContent = position.translated((int)scrollX, 0);
         for (int index = 0; index < areas.size(); ++index)
-            if (areas[index].contains(position))
+            if (areas[index].contains(inContent))
                 return index;
         return -1;
     }
+
+    void clampScroll() { scrollX = juce::jlimit(0.f, (float)juce::jmax(0, contentWidth - getWidth()), scrollX); }
+    juce::Rectangle<int> barArea() const { return juce::Rectangle<int>(0, getHeight() - 3, getWidth(), 3); }
+    juce::Rectangle<int> thumbArea() const
+    {
+        const float visible = (float)getWidth() / (float)juce::jmax(1, contentWidth);
+        const int width = juce::jmax(24, juce::roundToInt(visible * (float)getWidth()));
+        const float proportion = contentWidth > getWidth() ? scrollX / (float)(contentWidth - getWidth()) : 0.f;
+        return juce::Rectangle<int>(juce::roundToInt(proportion * (float)(getWidth() - width)), getHeight() - 3, width, 3);
+    }
+
+    bool overflowing = false, draggingBar = false, barHovered = false;
+    float scrollX = 0.f, dragStartScroll = 0.f;
+    int contentWidth = 0;
 
     void setHovered(int index)
     {

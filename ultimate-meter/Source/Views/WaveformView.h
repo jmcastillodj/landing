@@ -46,11 +46,18 @@ public:
         bool timeCode = false;
         double hostSeconds = -1.0;
 
+        // Musical time: with it the span is a note or some bars, and the grid follows the beats of the host
+        bool musical = false;
+        double spanBeats = 0.0, bpm = 120.0, beatsPerBar = 4.0, ppq = -1.0;
+        juce::String spanLabel;
+
         bool operator==(const Settings& other) const
         {
             return channels == other.channels && colours == other.colours && sweep == other.sweep && peakHistory == other.peakHistory
                 && timeCode == other.timeCode && juce::exactlyEqual(zoom, other.zoom) && juce::exactlyEqual(spanSeconds, other.spanSeconds)
-                && juce::exactlyEqual(hostSeconds, other.hostSeconds);
+                && juce::exactlyEqual(hostSeconds, other.hostSeconds) && musical == other.musical && juce::exactlyEqual(spanBeats, other.spanBeats)
+                && juce::exactlyEqual(bpm, other.bpm) && juce::exactlyEqual(beatsPerBar, other.beatsPerBar) && juce::exactlyEqual(ppq, other.ppq)
+                && spanLabel == other.spanLabel;
         }
     };
 
@@ -118,7 +125,13 @@ private:
     double rawMaxSpan() const;
 
     // Makes the bins of the picture, from the newest, and says where the newest one ends and how wide each is
-    void buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan) const;
+    void buildBins(std::vector<Bin>& bins, double& newestRight, double& binWidth, int& binsInSpan, juce::int64& originBin) const;
+    void restartSweep(const Settings& newSettings);
+
+    // Where a sweep began, as a count of samples and a position in the music, which is the left edge of the picture
+    juce::int64 sweepOriginSample = 0;
+    double sweepOriginPpq = 0.0;
+    int stagnantFrames = 0;
 
     bool viewHovered = false;
     float wheelAccumulator = 0.f;
