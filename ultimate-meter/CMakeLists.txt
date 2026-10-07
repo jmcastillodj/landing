@@ -29,6 +29,8 @@ juce_add_plugin(UltimateMeter
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon.png"
     # The standalone reads an audio interface. Without this, macOS gives it silence and never asks
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "ULTIMATE METER needs your audio interface input to measure the sound."
