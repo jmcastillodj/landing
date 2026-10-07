@@ -29,6 +29,9 @@ juce_add_plugin(UltimateMeter
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
+    # The standalone reads an audio interface. Without this, macOS gives it silence and never asks
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "ULTIMATE METER needs your audio interface input to measure the sound."
     VST3_CATEGORIES Fx Analyzer
     AU_MAIN_TYPE kAudioUnitType_Effect
     AU_EXPORT_PREFIX UltimateMeterAU
