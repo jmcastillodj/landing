@@ -32,7 +32,7 @@ namespace
     // The goniometer, the only view of the stereo image, is at the end, beside the correlation. The
     // values of the parameter are in another order, which is that of version 2's first builds, and
     // cannot change without saved sessions opening on the wrong view.
-    constexpr std::array<int, 11> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference, Parameters::viewCorrelometer, Parameters::viewVu,
+    constexpr std::array<int, 12> tabOrder { Parameters::viewSpectrum, Parameters::viewBalance, Parameters::viewSpectrogram, Parameters::viewWaveform, Parameters::viewLoudness, Parameters::viewLoudnessRound, Parameters::viewReference, Parameters::viewCorrelometer, Parameters::viewVu, Parameters::viewBpm,
                                             Parameters::viewHistory, Parameters::viewGoniometer };
 }
 
@@ -49,6 +49,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     referenceView(p.references, p.apvts.state),
     correlometerView(p.apvts, p.apvts.state),
     vuView(p.apvts),
+    bpmView(p.bpmDetector),
     monitorStrip(p.apvts),
     mainViewAttachment(*audioProcessor.apvts.getParameter(Parameters::ID::mainView),
         [this](float value) { showMainView(juce::roundToInt(value)); }),
@@ -118,6 +119,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addChildComponent(referenceView);
     addChildComponent(correlometerView);
     addChildComponent(vuView);
+    addChildComponent(bpmView);
     addAndMakeVisible(monitorStrip);
     vuView.onAdvanced = [this](juce::Rectangle<int> area)
     {
@@ -304,7 +306,7 @@ UltimateMeterAudioProcessorEditor::UltimateMeterAudioProcessorEditor(UltimateMet
     addAndMakeVisible(presetsButton);
     presetsButton.buildMenu = [this](juce::PopupMenu& menu) { buildPresetsMenu(menu); };
 
-    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView, &correlometerView, &vuView })
+    for (auto* view : std::initializer_list<juce::Component*> { &goniometerView, &spectrumView, &spectrogramView, &historyView, &waveformView, &balanceView, &loudnessView, &radarView, &referenceView, &correlometerView, &vuView, &bpmView })
         view->addMouseListener(this, true);
 
     // One button starts every measurement again, as the reset of a loudness meter does. Nothing
@@ -712,6 +714,7 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
     referenceView.setCompact(multiEnabled);
     correlometerView.update(audioProcessor.correlator);
     vuView.update(audioProcessor.vuEngine.read(), elapsedSeconds);
+    bpmView.update(audioProcessor.hostTimeSeconds.load(std::memory_order_relaxed) >= 0.0 ? audioProcessor.hostBpm.load(std::memory_order_relaxed) : 0.0);
 
     // What the reference view compares its tracks with: the mix, as it has been playing
     {
@@ -794,6 +797,7 @@ juce::Component* UltimateMeterAudioProcessorEditor::componentOfView(int viewId)
         case Parameters::viewReference:   return &referenceView;
         case Parameters::viewCorrelometer: return &correlometerView;
         case Parameters::viewVu:          return &vuView;
+        case Parameters::viewBpm:         return &bpmView;
         default:                          return nullptr;
     }
 }
@@ -1083,9 +1087,9 @@ void UltimateMeterAudioProcessorEditor::showLayoutMenu()
         juce::PopupMenu rowMenu;
         const int current = viewRow[(size_t)viewId];
 
-        rowMenu.addItem(1000 + viewId * 10, "Hidden", true, current < 0);
+        rowMenu.addItem(1000 + viewId * 100, "Hidden", true, current < 0);
         for (int row = 0; row < maxRows; ++row)
-            rowMenu.addItem(1000 + viewId * 10 + row + 1, "Row " + juce::String(row + 1), true, current == row);
+            rowMenu.addItem(1000 + viewId * 100 + row + 1, "Row " + juce::String(row + 1), true, current == row);
 
         menu.addSubMenu(Parameters::mainViewNames[viewId], rowMenu);
     }
@@ -1099,7 +1103,7 @@ void UltimateMeterAudioProcessorEditor::showLayoutMenu()
             if (result < 1000)
                 safe->applyLayoutPreset(result - 1);
             else
-                safe->setViewRow((result - 1000) / 10, (result - 1000) % 10 - 1);
+                safe->setViewRow((result - 1000) / 100, (result - 1000) % 100 - 1);
         });
 }
 
@@ -1440,6 +1444,13 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             buildVuMenu(menu);
             break;
 
+        case viewBpm:
+            menu.addItem(juce::String(juce::CharPointer_UTF8("\xc3\xb7")) + "2", [this] { audioProcessor.bpmDetector.multiplyTempo(-1); });
+            menu.addItem(juce::String(juce::CharPointer_UTF8("\xc3\x97")) + "2", [this] { audioProcessor.bpmDetector.multiplyTempo(+1); });
+            menu.addItem("Hold the reading", true, audioProcessor.bpmDetector.isHeld(), [this] { audioProcessor.bpmDetector.setHeld(!audioProcessor.bpmDetector.isHeld()); });
+            menu.addItem("Reset", [this] { audioProcessor.bpmDetector.reset(); });
+            break;
+
         case viewCorrelometer:
             addChoice("Primary", ID::corrPrimary);
             addChoice("Secondary", ID::corrSecondary);
@@ -1682,6 +1693,7 @@ void UltimateMeterAudioProcessorEditor::updateHandles()
 
     // The correlometer keeps its buttons clear of its grip
     correlometerView.setTopInset(dragHandles[(size_t)Parameters::viewCorrelometer].isVisible() ? 22 : 0);
+    bpmView.setTopInset(dragHandles[(size_t)Parameters::viewBpm].isVisible() ? 22 : 0);
 }
 
 // Where a view that is dragged to a point would land, in the view that is under it: at its left or its right edge in a

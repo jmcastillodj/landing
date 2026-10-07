@@ -94,7 +94,7 @@ namespace Parameters
 
     // What the level bars show, and, as a setting of its own, what the history of the levels shows
     inline const juce::StringArray meterViewNames { "Peak + RMS", "Peak", "RMS" };
-    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference", "Correlometer", "VU Meter" };
+    inline const juce::StringArray mainViewNames { "Goniometer", "Spectrum", "Spectrogram", "History", "Loudness", "Waveform", "Balance", "Loudness Round", "Reference", "Correlometer", "VU Meter", "BPM Detective" };
 
     enum MeterView
     {
@@ -115,7 +115,8 @@ namespace Parameters
         viewLoudnessRound,
         viewReference,
         viewCorrelometer,
-        viewVu
+        viewVu,
+        viewBpm
     };
 
     inline const juce::StringArray goniometerModeNames { "Lissajous", "Polar" };

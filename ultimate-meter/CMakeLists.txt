@@ -52,6 +52,7 @@ target_sources(UltimateMeter PRIVATE
     Source/Views/ReferenceView.cpp
     Source/Views/CorrelometerView.cpp
     Source/Views/VuMeterView.cpp
+    Source/Views/BpmView.cpp
     Source/Views/WaveformView.cpp)
 
 target_compile_definitions(UltimateMeter PUBLIC

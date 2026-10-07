@@ -29,6 +29,7 @@
 #include "Views/ReferenceView.h"
 #include "Views/CorrelometerView.h"
 #include "Views/VuMeterView.h"
+#include "Views/BpmView.h"
 #include "Views/MonitorStrip.h"
 #include "Views/LevelMeters.h"
 #include "Views/LoudnessSummary.h"
@@ -152,6 +153,7 @@ private:
     ReferenceView referenceView;
     CorrelometerView correlometerView;
     VuMeterView vuView;
+    BpmView bpmView;
     MonitorStrip monitorStrip;
     void buildVuMenu(juce::PopupMenu& menu);
     float widthAverage = 0.f;
@@ -181,10 +183,10 @@ private:
     // Whether the constructor has finished, before which a change of size is not the user's
     bool isConstructed = false;
 
-    static constexpr int maxRows = 11; // as many as there are views, so that each can have a row of its own
+    static constexpr int maxRows = 12; // as many as there are views, so that each can have a row of its own
     bool multiEnabled = false;
     float heldPeakDb = -200.f; // the highest sample peak since the last reset, for the RMS readout
-    std::array<int, 11> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
+    std::array<int, 12> viewRow { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }; // by view, the row that it is in, or -1 for a view that is not showing
     int currentMainView = 0;
     juce::Rectangle<int> viewArea;
     juce::StretchableLayoutManager rowLayout;
@@ -198,14 +200,14 @@ private:
     // They are read from the layout after every change, so that adding a view or taking one away does
     // not undo the sizes that were dragged, and they are kept in the session.
     std::array<double, maxRows> rowWeight {};
-    std::array<double, 11> viewWeight {};
+    std::array<double, 12> viewWeight {};
 
     // The place of a view among the views of its row, from the left. Only the order counts.
-    std::array<int, 11> viewCell { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };   // the column of a view in its row, from the left
-    std::array<int, 11> viewStack { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };  // the place of a view in its column, from the top
-    std::array<double, 11> viewHeight {};                             // the share of its column's height that a view has
+    std::array<int, 12> viewCell { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };   // the column of a view in its row, from the left
+    std::array<int, 12> viewStack { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };  // the place of a view in its column, from the top
+    std::array<double, 12> viewHeight {};                             // the share of its column's height that a view has
 
-    std::array<DragHandle, 11> dragHandles;
+    std::array<DragHandle, 12> dragHandles;
     DropOverlay dropOverlay;
     int draggedView = -1;
     Drop currentDrop;

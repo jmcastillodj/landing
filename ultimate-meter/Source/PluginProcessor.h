@@ -21,6 +21,7 @@
 #include "Engine/ReferenceManager.h"
 #include "Engine/MultibandCorrelator.h"
 #include "Engine/VuMeterEngine.h"
+#include "Engine/BpmDetector.h"
 
 using namespace juce;
 
@@ -93,6 +94,7 @@ public:
     ReferenceManager references;
     MultibandCorrelator correlator;
     VuMeterEngine vuEngine;
+    BpmDetector bpmDetector;
     std::array<std::atomic<float>*, 5> corrParameters {};
     std::array<std::atomic<float>*, 14> vuParameters {}; // the VU meter's settings, in the order of vuIds in the processor
     std::array<std::atomic<float>*, 5> monitorParameters {}; // mode, mute left, mute right, polarity left, polarity right

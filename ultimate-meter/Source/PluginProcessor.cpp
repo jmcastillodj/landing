@@ -128,6 +128,7 @@ void UltimateMeterAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     references.hostRate.store(sampleRate);
     correlator.prepare(sampleRate);
     vuEngine.prepare(sampleRate);
+    bpmDetector.prepare(sampleRate);
     monitorMatrix = { 1.f, 0.f, 0.f, 1.f };
     meterEngine.prepare(sampleRate);
     loudnessMeter.prepare(sampleRate);
@@ -336,6 +337,7 @@ void UltimateMeterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             vuEngine.trimRightDb.store(read(13), std::memory_order_relaxed);
         }
         vuEngine.process(left, right, numSamples);
+        bpmDetector.process(left, right, numSamples, hostPlaying);
 
         // Every sample is measured here, the editor only reads the results
         meterEngine.process(left, right, numSamples);
