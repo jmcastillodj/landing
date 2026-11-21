@@ -22,7 +22,7 @@ namespace
     void feed(Engine& engine, const std::vector<float>& left, const std::vector<float>& right)
     {
         for (size_t start = 0; start < left.size(); start += 512)
-            engine.process(left.data() + start, right.data() + start, (int)juce::jmin<size_t>(512, left.size() - start));
+            engine.process(left.data() + start, right.data() + start, (int)std::min<size_t>(512, left.size() - start));
     }
 
     // A host that renders offline, or plays, as the test wants
@@ -165,7 +165,7 @@ struct BpmAnalyzerTests : juce::UnitTest
                 BpmAnalyzer analyzer;
                 analyzer.prepare(rate);
                 for (size_t start = 0; start < track.size(); start += 512)
-                    analyzer.processBlock(track.data() + start, (int)juce::jmin<size_t>(512, track.size() - start));
+                    analyzer.processBlock(track.data() + start, (int)std::min<size_t>(512, track.size() - start));
 
                 const auto result = analyzer.analyze();
                 expect(result.valid);
