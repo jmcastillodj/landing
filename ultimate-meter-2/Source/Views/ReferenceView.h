@@ -1,0 +1,87 @@
+// This file is part of ULTIMATE METER 2, by Jm Castillo (jmcastillo.es).
+// Copyright (C) 2026 Jm Castillo. ULTIMATE METER 2 is a modified version of Grisey, Copyright (C) Yulania,
+// changed in 2026. It is free software under the GNU General Public License, version 3: see LICENSE.md.
+
+#pragma once
+
+#include <JuceHeader.h>
+#include "../UI/Theme.h"
+#include "../Engine/ReferenceManager.h"
+
+//==============================================================================
+// Compares the mix with reference tracks. Up to four recordings are loaded; the part of one that loops is chosen
+// on its waveform (or found as the loudest part), and a click on REFERENCE plays it in place of the mix, at the
+// loudness of the mix if level match is on. The peak and the loudness of both are shown side by side, and the
+// curve at the bottom is the correction that would bring the tone of the mix to the tone of the reference.
+class ReferenceView : public juce::Component
+{
+public:
+    // What is known of the mix, handed over by the editor once per frame
+    struct Mix
+    {
+        float integratedLufs = -200.f;
+        float peakDb = -200.f;
+        float width = 0.f;
+        float plr = 0.f;
+        std::vector<float> curve; // empty while there is nothing
+    };
+
+    ReferenceView(ReferenceManager& manager, juce::ValueTree& stateTree);
+    ~ReferenceView() override;
+
+    void paint(juce::Graphics& g) override;
+    void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+
+    void update(const Mix& newMix, float elapsedSeconds);
+
+    // Without the correction curve, for when the view shares the window with others
+    void setCompact(bool shouldBeCompact) { if (compact != shouldBeCompact) { compact = shouldBeCompact; resized(); repaint(); } }
+
+    // For the menu of the view
+    void chooseFile(int slot);
+    void removeSelected();
+    void smartLoop();
+    bool isLevelMatched() const { return levelMatch; }
+    void setLevelMatched(bool shouldMatch) { levelMatch = shouldMatch; repaint(); }
+    int getSelected() const { return selected; }
+    void setMirror(bool shouldMirror);
+    bool isMirror() const { return manager.mirror.load(); }
+    void nudge(int samples) { manager.mirrorOffset.store(manager.mirrorOffset.load() + samples); repaint(); }
+    void resetOffset() { manager.mirrorOffset.store(0); repaint(); }
+
+private:
+    void select(int slot);
+    int sampleAt(float x, const ReferenceManager::Track& track) const;
+    float xOfSample(int sample, const ReferenceManager::Track& track) const;
+    float xOfFrequency(double frequency) const;
+    void computeMatch();
+
+    ReferenceManager& manager;
+    juce::ValueTree& state;
+
+    Mix mix;
+    float gainDb = 0.f;
+    bool levelMatch = true;
+    int selected = 0;
+
+    // The part being dragged out on the waveform, in samples, while the mouse is down
+    bool dragging = false;
+    int dragFrom = 0, dragTo = 0;
+
+    // The correction curve and the score
+    std::vector<float> correction;
+    bool compact = false;
+    float matchPercent = -1.f;
+
+    juce::Rectangle<int> tagsArea, waveArea, slotsArea, middleArea, curveArea, levelMatchArea, mirrorArea, freeArea, originalArea, referenceArea;
+    std::array<juce::Rectangle<int>, ReferenceManager::numSlots> slotAreas, removeAreas;
+
+    std::unique_ptr<juce::FileChooser> chooser;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReferenceView)
+};

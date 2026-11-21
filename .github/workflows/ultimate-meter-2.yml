@@ -1,0 +1,67 @@
+name: ULTIMATE METER 2 build
+
+on:
+  push:
+    paths: ['ultimate-meter-2/**', '.github/workflows/ultimate-meter-2.yml']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'What to build by hand'
+        type: choice
+        options: [both, windows, macos]
+        default: both
+
+concurrency:
+  group: ultimate-meter-2-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows takes four times as long, so it only runs when the workflow is started by hand
+        include: ${{ fromJSON(github.event_name != 'workflow_dispatch' && '[{"name":"macOS","os":"macos-latest"}]' || inputs.platform == 'windows' && '[{"name":"Windows","os":"windows-latest"}]' || inputs.platform == 'macos' && '[{"name":"macOS","os":"macos-latest"}]' || '[{"name":"macOS","os":"macos-latest"},{"name":"Windows","os":"windows-latest"}]') }}
+    defaults:
+      run:
+        working-directory: ultimate-meter-2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get JUCE
+        run: git clone --depth 1 --branch 9.0.6 https://github.com/juce-framework/JUCE.git JUCE
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Sign (ad-hoc) and zip for macOS
+        if: runner.os == 'macOS'
+        run: |
+          cd build/UltimateMeter2_artefacts/Release
+          for b in VST3/*.vst3 AU/*.component Standalone/*.app; do
+            codesign --force --deep --sign - "$b"
+            codesign --verify --deep --strict "$b"
+          done
+          mkdir -p ../../../dist
+          ditto -c -k --keepParent VST3 ../../../dist/UltimateMeter2-VST3.zip
+          ditto -c -k --keepParent AU ../../../dist/UltimateMeter2-AU.zip
+          ditto -c -k --keepParent Standalone ../../../dist/UltimateMeter2-Standalone.zip
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: UltimateMeter2-macOS
+          path: ultimate-meter-2/dist/*.zip
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'macOS'
+        with:
+          name: UltimateMeter2-${{ matrix.name }}
+          path: |
+            ultimate-meter-2/build/UltimateMeter2_artefacts/Release/VST3
+            ultimate-meter-2/build/UltimateMeter2_artefacts/Release/Standalone/*.exe

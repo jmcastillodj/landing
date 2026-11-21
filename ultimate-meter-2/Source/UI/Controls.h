@@ -1,0 +1,529 @@
+// This file is part of ULTIMATE METER 2, by Jm Castillo (jmcastillo.es).
+// Copyright (C) 2026 Jm Castillo. ULTIMATE METER 2 is a modified version of Grisey, Copyright (C) Yulania,
+// changed in 2026. It is free software under the GNU General Public License, version 3: see LICENSE.md.
+
+#pragma once
+
+#include <JuceHeader.h>
+#include "Theme.h"
+
+//==============================================================================
+// The controls of the header and the bottom bar. They are quiet pieces of text that
+// brighten under the mouse, so that the displays stay the loudest thing on the screen.
+
+//==============================================================================
+// Adds the options of a choice parameter to a menu, with a tick beside the current one.
+// Choosing an option sets the parameter as one gesture, so that a host can undo it.
+inline void addChoiceItems(juce::PopupMenu& menu, juce::RangedAudioParameter& parameter)
+{
+    const auto& names = parameter.getAllValueStrings();
+    const int current = juce::roundToInt(parameter.convertFrom0to1(parameter.getValue()));
+
+    for (int index = 0; index < names.size(); ++index)
+    {
+        menu.addItem(names[index], true, index == current, [&parameter, index]
+        {
+            parameter.beginChangeGesture();
+            parameter.setValueNotifyingHost(parameter.convertTo0to1((float)index));
+            parameter.endChangeGesture();
+        });
+    }
+}
+
+//==============================================================================
+// A choice parameter as the name of the setting in grey, its current option in a pale color, and a
+// small arrow, which opens a menu of the options: "Tilt: 4.5 dB/oct".
+class MenuButton : public juce::Component
+{
+public:
+    explicit MenuButton(juce::RangedAudioParameter& parameterToControl, juce::String prefixText = {}) :
+        parameter(parameterToControl),
+        prefix(std::move(prefixText)),
+        attachment(parameterToControl, [this](float value) { setCurrent(juce::roundToInt(value)); })
+    {
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        attachment.sendInitialUpdate();
+    }
+
+    // The width that the widest option needs, so that the bar does not shift as the option changes
+    int getIdealWidth() const
+    {
+        int widest = 0;
+        for (auto& name : parameter.getAllValueStrings())
+            widest = juce::jmax(widest, Theme::textWidth(Theme::controlFont(), name));
+
+        const int prefixWidth = prefix.isEmpty() ? 0 : Theme::textWidth(Theme::controlFont(), prefix) + prefixGap;
+        return prefixWidth + widest + chevronWidth + 2 * padding;
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().reduced(padding, 0);
+
+        g.setFont(Theme::controlFont());
+
+        if (prefix.isNotEmpty())
+        {
+            g.setColour(Theme::textDim);
+            g.drawText(prefix, bounds.removeFromLeft(Theme::textWidth(Theme::controlFont(), prefix) + prefixGap), juce::Justification::centredLeft);
+        }
+
+        // The chevron follows the text, however short the current option is
+        const juce::String text = parameter.getAllValueStrings()[current];
+        const auto textArea = bounds.removeFromLeft(Theme::textWidth(Theme::controlFont(), text) + 2);
+        const auto chevronArea = bounds.removeFromLeft(chevronWidth).toFloat();
+
+        g.setColour(isMouseOver() ? juce::Colours::white : Theme::text);
+        g.drawText(text, textArea, juce::Justification::centredLeft);
+
+        // A small filled arrow
+        juce::Path arrow;
+        const auto centre = chevronArea.getCentre();
+        arrow.addTriangle(centre.x - 3.f, centre.y - 1.5f, centre.x + 3.f, centre.y - 1.5f, centre.x, centre.y + 2.5f);
+        g.setColour(isMouseOver() ? Theme::text : Theme::textDim);
+        g.fillPath(arrow);
+    }
+
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
+
+    void mouseDown(const juce::MouseEvent&) override
+    {
+        juce::PopupMenu menu;
+        addChoiceItems(menu, parameter);
+
+        // A menu does not take the look of the component that it belongs to, so it is given it
+        menu.setLookAndFeel(&getLookAndFeel());
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards));
+    }
+
+private:
+    static constexpr int padding = 9;
+    static constexpr int chevronWidth = 14;
+    static constexpr int prefixGap = 5;
+
+    void setCurrent(int index)
+    {
+        current = juce::jlimit(0, parameter.getAllValueStrings().size() - 1, index);
+        repaint();
+    }
+
+    juce::RangedAudioParameter& parameter;
+    juce::String prefix;
+    int current = 0;
+    juce::ParameterAttachment attachment;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MenuButton)
+};
+
+//==============================================================================
+// A button that is a piece of text. When it toggles, a dot and the accent color show that it is on.
+class TextButtonQuiet : public juce::Button
+{
+public:
+    explicit TextButtonQuiet(const juce::String& text) : juce::Button(text)
+    {
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    }
+
+    int getIdealWidth() const
+    {
+        return Theme::textWidth(Theme::controlFont(), getName()) + 2 * padding + (isToggleable() ? dotWidth : 0);
+    }
+
+    void paintButton(juce::Graphics& g, bool isHighlighted, bool isDown) override
+    {
+        auto bounds = getLocalBounds().reduced(padding, 0);
+        const bool on = getToggleState();
+        const auto colour = on ? Theme::accent : (isHighlighted || isDown) ? juce::Colours::white : Theme::text;
+
+        if (isToggleable())
+        {
+            const auto dot = bounds.removeFromLeft(dotWidth).toFloat().withSizeKeepingCentre(5.f, 5.f).translated(-2.f, 0.f);
+            g.setColour(on ? Theme::accent : Theme::textFaint);
+            if (on)
+                g.fillEllipse(dot);
+            else
+                g.drawEllipse(dot, 1.f);
+        }
+
+        g.setFont(Theme::controlFont());
+        g.setColour(colour);
+        g.drawText(getName(), bounds, juce::Justification::centredLeft);
+    }
+
+private:
+    static constexpr int padding = 8;
+    static constexpr int dotWidth = 12;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TextButtonQuiet)
+};
+
+//==============================================================================
+// A button that opens a menu which is built when it is clicked, for settings that are
+// too many to each have a place on the bar.
+class SettingsButton : public juce::Component
+{
+public:
+    explicit SettingsButton(const juce::String& text) : label(text)
+    {
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    }
+
+    // Fills the menu, called every time that the button is clicked
+    std::function<void(juce::PopupMenu&)> buildMenu;
+
+    int getIdealWidth() const { return Theme::textWidth(Theme::controlFont(), label) + 38; }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().reduced(8, 0);
+        const auto colour = isMouseOver() ? juce::Colours::white : Theme::text;
+
+        // Three sliders, as a sign for settings
+        auto icon = bounds.removeFromLeft(16).toFloat().withSizeKeepingCentre(11.f, 9.f);
+        g.setColour(colour);
+        for (int line = 0; line < 3; ++line)
+        {
+            const float y = icon.getY() + 1.f + (float)line * 3.5f;
+            g.fillRect(icon.getX(), y, icon.getWidth(), 1.f);
+            g.fillRect(icon.getX() + (line == 1 ? 6.f : 2.f), y - 1.f, 2.f, 3.f);
+        }
+
+        g.setFont(Theme::controlFont());
+        g.drawText(label, bounds.withTrimmedLeft(4), juce::Justification::centredLeft);
+    }
+
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
+
+    void mouseDown(const juce::MouseEvent&) override
+    {
+        juce::PopupMenu menu;
+        if (buildMenu)
+            buildMenu(menu);
+
+        menu.setLookAndFeel(&getLookAndFeel());
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withPreferredPopupDirection(juce::PopupMenu::Options::PopupDirection::upwards));
+    }
+
+private:
+    juce::String label;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsButton)
+};
+
+//==============================================================================
+// The tabs of the header, one for each view. The tab of the current view is bright and underlined.
+class TabBar : public juce::Component
+{
+public:
+    TabBar() = default;
+
+    // Called with the index of the tab that the user has clicked
+    std::function<void(int)> onChange;
+
+    void setTabs(const juce::StringArray& tabNames)
+    {
+        names.clear();
+        for (auto& name : tabNames)
+            names.add(name.toUpperCase());
+
+        resized();
+    }
+
+    // Shows a tab as the current one, without calling onChange
+    void setSelection(int index)
+    {
+        if (selected != index)
+        {
+            selected = index;
+            showTab(index);
+            repaint();
+        }
+    }
+
+    // When the tabs do not all fit they scroll, and this brings one into view
+    void showTab(int index)
+    {
+        if (!overflowing || index < 0 || index >= areas.size())
+            return;
+
+        const auto area = areas[index];
+        if (area.getX() < (int)scrollX)
+            scrollX = (float)area.getX();
+        else if (area.getRight() > (int)scrollX + getWidth())
+            scrollX = (float)(area.getRight() - getWidth());
+
+        clampScroll();
+        repaint();
+    }
+
+    // In multi mode every tab can be on at once, and a click toggles the tab instead of choosing it
+    void setMultiMode(bool shouldBeMulti)
+    {
+        multi = shouldBeMulti;
+        repaint();
+    }
+
+    // The tabs that are on in multi mode, one bit for each tab
+    void setSelectionMask(int newMask)
+    {
+        if (selectionMask != newMask)
+        {
+            selectionMask = newMask;
+            repaint();
+        }
+    }
+
+    int getIdealWidth() const
+    {
+        int width = 0;
+        for (auto& name : names)
+            width += Theme::textWidth(Theme::font(11.f, true).withExtraKerningFactor(0.08f), name) + 2 * padding;
+        return width;
+    }
+
+    void resized() override
+    {
+        // When the room is short the space around the names shrinks, so that every tab stays in view
+        fontScale = 1.f; // the width of the tabs is measured at full size
+        int textTotal = 0;
+        for (auto& name : names)
+            textTotal += Theme::textWidth(tabFont(), name);
+
+        // With many tabs and little room the names are set a little smaller, down to four fifths
+        if (!names.isEmpty() && getWidth() > 0 && textTotal + 2 * 4 * names.size() > getWidth())
+        {
+            fontScale = juce::jlimit(0.8f, 1.f, (float)(getWidth() - 2 * 4 * names.size()) / (float)textTotal);
+            textTotal = 0;
+            for (auto& name : names)
+                textTotal += Theme::textWidth(tabFont(), name);
+        }
+
+        currentPadding = names.isEmpty() ? padding : juce::jlimit(3, padding, (getWidth() - textTotal) / (2 * names.size()));
+
+        // Where even the smallest names do not fit, they keep a readable size and the row scrolls
+        overflowing = !names.isEmpty() && getWidth() > 0 && textTotal + 2 * currentPadding * names.size() > getWidth() + 1;
+        if (overflowing)
+        {
+            fontScale = 0.9f;
+            currentPadding = 8;
+        }
+
+        areas.clear();
+        int x = 0;
+        for (auto& name : names)
+        {
+            const int width = Theme::textWidth(tabFont(), name) + 2 * currentPadding;
+            areas.add(juce::Rectangle<int>(x, 0, width, getHeight()));
+            x += width;
+        }
+
+        contentWidth = x;
+        clampScroll();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.setFont(tabFont());
+
+        g.saveState();
+        g.addTransform(juce::AffineTransform::translation(-scrollX, 0.f));
+
+        for (int index = 0; index < names.size(); ++index)
+        {
+            const bool isSelected = multi ? ((selectionMask >> index) & 1) != 0 : index == selected;
+            g.setColour(isSelected ? juce::Colours::white : index == hovered ? Theme::text : Theme::textDim);
+            g.drawText(names[index], areas[index], juce::Justification::centred);
+
+            if (isSelected)
+            {
+                g.setColour(Theme::accent);
+                g.fillRect(areas[index].reduced(currentPadding, 0).removeFromBottom(2));
+            }
+        }
+
+        g.restoreState();
+
+        // The bar for sliding along the tabs, when they do not all fit
+        if (overflowing)
+        {
+            g.setColour(Theme::grid);
+            g.fillRect(barArea());
+            g.setColour(draggingBar || barHovered ? Theme::accent : Theme::textFaint);
+            g.fillRoundedRectangle(thumbArea().toFloat(), 1.5f);
+        }
+    }
+
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
+    {
+        if (!overflowing)
+            return;
+
+        const float delta = wheel.deltaX != 0.f ? wheel.deltaX : wheel.deltaY;
+        scrollX -= delta * 400.f;
+        clampScroll();
+        repaint();
+    }
+
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (draggingBar)
+        {
+            scrollX = dragStartScroll + (float)e.getDistanceFromDragStartX() * (float)contentWidth / (float)juce::jmax(1, getWidth());
+            clampScroll();
+            repaint();
+        }
+    }
+
+    void mouseUp(const juce::MouseEvent&) override { draggingBar = false; repaint(); }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        const bool onBar = overflowing && e.y >= getHeight() - 10;
+        if (onBar != barHovered)
+        {
+            barHovered = onBar;
+            repaint();
+        }
+        setHovered(onBar ? -1 : tabAt(e.getPosition()));
+    }
+
+    void mouseExit(const juce::MouseEvent&) override { barHovered = false; setHovered(-1); }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        // The bar at the foot: a click on it centres the thumb there, and it can be dragged
+        if (overflowing && e.y >= getHeight() - 10)
+        {
+            if (!thumbArea().contains(e.getPosition()))
+                scrollX = ((float)e.x / (float)juce::jmax(1, getWidth())) * (float)contentWidth - (float)getWidth() * 0.5f;
+
+            clampScroll();
+            draggingBar = true;
+            dragStartScroll = scrollX;
+            repaint();
+            return;
+        }
+
+        const int index = tabAt(e.getPosition());
+        if (index >= 0 && multi)
+        {
+            if (onChange)
+                onChange(index);
+        }
+        else if (index >= 0 && index != selected)
+        {
+            setSelection(index);
+            if (onChange)
+                onChange(index);
+        }
+    }
+
+private:
+    static constexpr int padding = 12;
+    int currentPadding = padding;
+    float fontScale = 1.f;
+    juce::Font tabFont() const { return Theme::font(11.f * fontScale, true).withExtraKerningFactor(0.08f * fontScale); }
+
+    int tabAt(juce::Point<int> position) const
+    {
+        const auto inContent = position.translated((int)scrollX, 0);
+        for (int index = 0; index < areas.size(); ++index)
+            if (areas[index].contains(inContent))
+                return index;
+        return -1;
+    }
+
+    void clampScroll() { scrollX = juce::jlimit(0.f, (float)juce::jmax(0, contentWidth - getWidth()), scrollX); }
+    juce::Rectangle<int> barArea() const { return juce::Rectangle<int>(0, getHeight() - 3, getWidth(), 3); }
+    juce::Rectangle<int> thumbArea() const
+    {
+        const float visible = (float)getWidth() / (float)juce::jmax(1, contentWidth);
+        const int width = juce::jmax(24, juce::roundToInt(visible * (float)getWidth()));
+        const float proportion = contentWidth > getWidth() ? scrollX / (float)(contentWidth - getWidth()) : 0.f;
+        return juce::Rectangle<int>(juce::roundToInt(proportion * (float)(getWidth() - width)), getHeight() - 3, width, 3);
+    }
+
+    bool overflowing = false, draggingBar = false, barHovered = false;
+    float scrollX = 0.f, dragStartScroll = 0.f;
+    int contentWidth = 0;
+
+    void setHovered(int index)
+    {
+        if (hovered != index)
+        {
+            hovered = index;
+            setMouseCursor(index >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+            repaint();
+        }
+    }
+
+    juce::StringArray names;
+    juce::Array<juce::Rectangle<int>> areas;
+    int selected = 0, hovered = -1;
+    bool multi = false;
+    int selectionMask = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TabBar)
+};
+
+//==============================================================================
+// A rotary knob with its name above it and its value below, which floats over a display.
+// It is faint until the mouse is over the display, so that it does not distract.
+class FloatingKnob : public juce::Component
+{
+public:
+    FloatingKnob(juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID, const juce::String& nameText, const juce::String& suffixText) :
+        name(nameText), suffix(suffixText)
+    {
+        slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+        slider.onValueChange = [this] { repaint(); };
+        addAndMakeVisible(slider);
+
+        attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, parameterID, slider);
+        setAlpha(restingAlpha);
+    }
+
+    // Brightens the knob while the mouse is over the display that it floats on
+    void setEmphasized(bool shouldBeEmphasized)
+    {
+        const float alpha = shouldBeEmphasized ? 1.f : restingAlpha;
+        if (!juce::exactlyEqual(alpha, getAlpha()))
+            juce::Desktop::getInstance().getAnimator().animateComponent(this, getBounds(), alpha, 160, false, 1.0, 1.0);
+    }
+
+    void resized() override
+    {
+        slider.setBounds(getLocalBounds().reduced(shadowMargin).withTrimmedTop(8).withTrimmedBottom(30));
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        // The margin leaves room for the panel's shadow
+        const auto panel = getLocalBounds().reduced(shadowMargin);
+        Theme::drawPanel(g, panel.toFloat());
+
+        auto text = panel.withTrimmedBottom(6).removeFromBottom(26);
+        g.setFont(Theme::labelFont());
+        g.setColour(Theme::knobLabel);
+        g.drawText(name.toUpperCase(), text.removeFromTop(13), juce::Justification::centred);
+        g.setFont(Theme::font(11.f));
+        g.setColour(Theme::textDim);
+        g.drawText(juce::String(juce::roundToInt(slider.getValue())) + suffix, text, juce::Justification::centred);
+    }
+
+    // The space around the panel that its shadow needs
+    static constexpr int shadowMargin = 10;
+
+private:
+    static constexpr float restingAlpha = 0.6f;
+
+    juce::String name, suffix;
+    juce::Slider slider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FloatingKnob)
+};
