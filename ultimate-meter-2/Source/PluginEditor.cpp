@@ -808,6 +808,9 @@ void UltimateMeterAudioProcessorEditor::updateMeters(float elapsedSeconds)
             spectrumSettings.filled = getChoice(ID::spectrumStyle) == 2;
             spectrumSettings.numBars = valueAt(spectrumBarCounts, getChoice(ID::spectrumBars));
             spectrumSettings.releaseSeconds = valueAt(spectrumReleaseSeconds, getChoice(ID::spectrumSpeed));
+            spectrumSettings.averageSeconds = valueAt(spectrumAvgSeconds, getChoice(ID::spectrumAvgTime));
+            spectrumSettings.rangeHiDb = valueAt(spectrumRangeHiDb, getChoice(ID::spectrumRangeHi));
+            spectrumSettings.rangeLoDb = valueAt(spectrumRangeLoDb, getChoice(ID::spectrumRangeLo));
 
             const int reference = getChoice(ID::spectrumReference);
             spectrumSettings.hasReference = reference > 0;
@@ -1399,7 +1402,10 @@ void UltimateMeterAudioProcessorEditor::buildViewMenu(juce::PopupMenu& menu, int
             addChoice("Channels", ID::spectrumChannels);
             addChoice("Style", ID::spectrumStyle);
             addChoice("Bars", ID::spectrumBars);
-            addChoice("Speed", ID::spectrumSpeed);
+            addChoice("Avg time", ID::spectrumAvgTime);
+            addChoice("Fall speed (Avg time off)", ID::spectrumSpeed);
+            addChoice("Range top", ID::spectrumRangeHi);
+            addChoice("Range bottom", ID::spectrumRangeLo);
             addChoice("Reference", ID::spectrumReference);
             addChoice("Tilt", ID::spectrumTilt);
             addChoice("Smoothing", ID::spectrumSmoothing);

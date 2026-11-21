@@ -27,9 +27,11 @@
 // the colours (by frequency band, one colour, or by level); a history of the levels of the three bands
 // over the waveform; scrolling, or a static picture that is swept from the left; and the time code of the host.
 //
-// In multi-band mode the colour of a stretch tells what the sound in it is made of: the samples go through a pair
-// of crossover filters, and the power of the low band (under 250 Hz) is red, of the middle (to 2.5 kHz) green, and
-// of the highs blue, mixed as the three are mixed in the sound, and smoothed over time so that it does not flicker.
+// In 3 band mode the picture is made of three bodies, one over the other, as on a DJ player: the lows (under 200 Hz)
+// in blue, the mids (to 2 kHz) in orange and the highs in white. Each is as tall as the peaks of its band, so that
+// what a stretch of sound is made of shows at a glance: a kick is a tall blue body, a hat a white one with no blue
+// under it. The bands are split by crossover filters of 24 dB per octave. Behind the three, faintly, is the shape of
+// the whole signal, whose top and bottom are the true highest and lowest samples.
 class WaveformView : public juce::Component
 {
 public:
@@ -120,6 +122,7 @@ private:
     {
         std::array<float, numSignals> minimum {}, maximum {}, rms {};
         float low = 0.f, mid = 0.f, high = 0.f; // mean power of each band of the mono signal
+        std::array<std::array<float, 3>, numSignals> band {}; // the highest that each band of each signal reaches
     };
 
     // What one pixel of the picture stands for
@@ -127,6 +130,7 @@ private:
     {
         std::array<float, numSignals> lowest {}, highest {}, meanSquare {};
         float low = 0.f, mid = 0.f, high = 0.f;
+        std::array<std::array<float, 3>, numSignals> band {};
         juce::int64 index = 0; // the number of the bin since the start, which does not change
     };
 
@@ -197,9 +201,41 @@ private:
     int countInColumn = 0;
     double samplesPerColumn = 200.0, phase = 0.0, sampleRate = 44100.0;
 
-    // Two one-pole stages for each crossover frequency
-    double filterRate = 0.0, lowCoefficient = 0.0, highCoefficient = 0.0;
-    double lowState[2] {}, highState[2] {};
+    // A crossover of 24 dB per octave (Linkwitz-Riley): two Butterworth sections of the second order in a row
+    struct Section
+    {
+        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
+    };
+
+    struct Crossover
+    {
+        double process(double in, const Section& c)
+        {
+            for (auto& z : state)
+            {
+                const double out = c.b0 * in + z[0];
+                z[0] = c.b1 * in - c.a1 * out + z[1];
+                z[1] = c.b2 * in - c.a2 * out;
+                in = out;
+            }
+            return in;
+        }
+
+        double state[2][2] {};
+    };
+
+    static Section makeSection(double frequency, double rate, bool highPass);
+
+    // For each signal: the lows, the highs, and the two filters that leave the mids
+    struct BandSplitter
+    {
+        Crossover low, high, midLow, midHigh;
+    };
+
+    double filterRate = 0.0;
+    Section lowPassLow, highPassLow, lowPassHigh, highPassHigh;
+    std::array<BandSplitter, numSignals> splitters;
+    std::array<std::array<float, 3>, numSignals> bandPeak {};
 
     juce::uint64 lastTotalWritten = 0;
     juce::AudioBuffer<float> samples;

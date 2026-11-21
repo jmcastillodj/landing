@@ -6,7 +6,12 @@
 
 namespace
 {
-    constexpr double lowCrossoverHz = 250.0, highCrossoverHz = 2500.0;
+    constexpr double lowCrossoverHz = 200.0, highCrossoverHz = 2000.0;
+
+    // The bodies of the three bands, from the back: lows, mids, highs. The mids and the highs are drawn larger than
+    // they measure, because music has far less level up there and they would not show.
+    const std::array<juce::Colour, 3> bandBodyColours { juce::Colour(0xff1f6bff), juce::Colour(0xfff5931f), juce::Colour(0xffffffff) };
+    constexpr std::array<float, 3> bandBodyGains { 1.f, 1.25f, 2.2f };
     constexpr int maxSamplesPerUpdate = 16384;
     constexpr int controlWidth = 124, controlHeight = 22, buttonWidth = 30;
 
@@ -142,7 +147,8 @@ void WaveformView::clearHistory()
     sweepOriginPpq = 0.0;
     countInColumn = 0;
     phase = 0.0;
-    lowState[0] = lowState[1] = highState[0] = highState[1] = 0.0;
+    splitters = {};
+    bandPeak = {};
     lastTotalWritten = audioProcessor.sampleRingBuffer.getTotalWritten();
     repaint();
 }
@@ -184,10 +190,6 @@ juce::Colour WaveformView::colourOfBands(float low, float mid, float high)
     const float centre = (wm * 0.5f + wh) / total;
     const float position = juce::jlimit(0.f, 1.f, (centre - 0.15f) / 0.55f);
 
-    // In the identity there is one colour: the red of the brand for the lows, paler through the mids, to white for the highs
-    if (Theme::flat)
-        return Theme::accent.interpolatedWith(juce::Colours::white, position);
-
     // Red and orange for the lows, through yellow and green for the mids, to blue for the highs
     const float hue = 0.0f + position * 0.62f;
     return juce::Colour::fromHSV(hue, 0.72f, 0.96f, 1.f);
@@ -197,9 +199,27 @@ void WaveformView::prepareFilters(double newSampleRate)
 {
     sampleRate = newSampleRate;
     filterRate = newSampleRate;
-    lowCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * lowCrossoverHz / newSampleRate);
-    highCoefficient = 1.0 - std::exp(-juce::MathConstants<double>::twoPi * highCrossoverHz / newSampleRate);
+    lowPassLow = makeSection(lowCrossoverHz, newSampleRate, false);
+    highPassLow = makeSection(lowCrossoverHz, newSampleRate, true);
+    lowPassHigh = makeSection(highCrossoverHz, newSampleRate, false);
+    highPassHigh = makeSection(highCrossoverHz, newSampleRate, true);
+    splitters = {};
     samplesPerColumn = newSampleRate / (double)columnsPerSecond;
+}
+
+// A Butterworth section of the second order, low-pass or high-pass
+WaveformView::Section WaveformView::makeSection(double frequency, double rate, bool highPass)
+{
+    const double w = juce::MathConstants<double>::twoPi * juce::jmin(frequency, 0.45 * rate) / rate;
+    const double cosine = std::cos(w), alpha = std::sin(w) / std::sqrt(2.0);
+    const double a0 = 1.0 + alpha;
+
+    Section section;
+    section.b1 = (highPass ? -(1.0 + cosine) : 1.0 - cosine) / a0;
+    section.b0 = section.b2 = 0.5 * std::abs(section.b1);
+    section.a1 = -2.0 * cosine / a0;
+    section.a2 = (1.0 - alpha) / a0;
+    return section;
 }
 
 double WaveformView::rawMaxSpan() const
@@ -229,17 +249,28 @@ void WaveformView::addSample(float left, float right)
         sumSquares[i] += (double)values[i] * (double)values[i];
     }
 
-    const double mono = (double)values[signalMid];
+    // Each signal is split into its three bands, and the highest that each band reaches is kept
+    double low = 0.0, mid = 0.0, high = 0.0;
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        auto& splitter = splitters[i];
+        const double x = (double)values[i];
+        const double l = splitter.low.process(x, lowPassLow);
+        const double h = splitter.high.process(x, highPassHigh);
+        const double m = splitter.midHigh.process(splitter.midLow.process(x, highPassLow), lowPassHigh);
 
-    // Two one-pole stages in a row make each crossover steeper
-    lowState[0] += lowCoefficient * (mono - lowState[0]);
-    lowState[1] += lowCoefficient * (lowState[0] - lowState[1]);
-    highState[0] += highCoefficient * (mono - highState[0]);
-    highState[1] += highCoefficient * (highState[0] - highState[1]);
+        bandPeak[i][0] = juce::jmax(bandPeak[i][0], (float)std::abs(l));
+        bandPeak[i][1] = juce::jmax(bandPeak[i][1], (float)std::abs(m));
+        bandPeak[i][2] = juce::jmax(bandPeak[i][2], (float)std::abs(h));
 
-    const double low = lowState[1];
-    const double mid = highState[1] - lowState[1];
-    const double high = mono - highState[1];
+        if (i == (size_t)signalMid)
+        {
+            low = l;
+            mid = m;
+            high = h;
+        }
+    }
+
     sumLow += low * low;
     sumMid += mid * mid;
     sumHigh += high * high;
@@ -251,6 +282,8 @@ void WaveformView::finishColumn()
     Column column;
     column.minimum = minimum;
     column.maximum = maximum;
+    column.band = bandPeak;
+    bandPeak = {};
 
     if (countInColumn > 0)
     {
@@ -422,6 +455,14 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
             // The colours come from the columns that cover the same time
             const auto firstColumn = std::max(columnsOldest, (juce::int64)((double)start / samplesPerColumn));
             const auto lastColumn = std::min(columnsNewest, (juce::int64)((double)end / samplesPerColumn));
+            for (auto c = firstColumn; c <= lastColumn; ++c)
+            {
+                const auto& column = columns[(size_t)(c % maxColumns)];
+                for (size_t i = 0; i < numSignals; ++i)
+                    for (size_t band = 0; band < 3; ++band)
+                        bin.band[i][band] = juce::jmax(bin.band[i][band], column.band[i][band]);
+            }
+
             if (lastColumn >= firstColumn)
             {
                 const auto stride = std::max<juce::int64>(1, (lastColumn - firstColumn) / 8);
@@ -495,6 +536,9 @@ void WaveformView::buildBins(std::vector<Bin>& bins, double& newestRight, double
                 bin.lowest[i] = juce::jmin(bin.lowest[i], column.minimum[i]);
                 bin.highest[i] = juce::jmax(bin.highest[i], column.maximum[i]);
                 bin.meanSquare[i] += column.rms[i] * column.rms[i];
+
+                for (size_t band = 0; band < 3; ++band)
+                    bin.band[i][band] = juce::jmax(bin.band[i][band], column.band[i][band]);
             }
 
             bin.low += column.low;
@@ -878,13 +922,38 @@ void WaveformView::paint(juce::Graphics& g)
                 const float top = midY - shape.highest * scale;
                 const float bottom = midY - shape.lowest * scale;
 
-                // The outer shape is the highest and lowest samples, a little dimmer, and the core is the RMS level
-                g.setColour(colour.withMultipliedBrightness(0.78f));
-                g.fillRect(x, top, width, juce::jmax(1.f, bottom - top));
+                if (settings.colours == Parameters::colourMultiBand)
+                {
+                    // Three bands: behind, faintly, the whole signal from its lowest sample to its highest, and over it
+                    // the bodies of the lows, the mids and the highs, each as tall as its band reaches, about the middle
+                    g.setColour(Theme::textFaint.withAlpha(0.45f));
+                    g.fillRect(x, top, width, juce::jmax(1.f, bottom - top));
 
-                const float core = juce::jmin(rmsGain * scale, juce::jmax(0.f, juce::jmin(midY - top, bottom - midY)));
-                g.setColour(colour.brighter(0.2f));
-                g.fillRect(x, midY - core, width, juce::jmax(1.f, 2.f * core));
+                    for (size_t band = 0; band < 3; ++band)
+                    {
+                        float reach = 0.f;
+                        for (size_t part = 0; part < 2; ++part)
+                            if (const int signal = lanes[(size_t)lane].signals[part]; signal >= 0)
+                                reach = juce::jmax(reach, bin.band[(size_t)signal][band]);
+
+                        const float h = juce::jmin(half, reach * bandBodyGains[band] * scale);
+                        if (h >= 0.5f)
+                        {
+                            g.setColour(bandBodyColours[band].withAlpha(band == 0 ? 1.f : 0.92f));
+                            g.fillRect(x, midY - h, width, 2.f * h);
+                        }
+                    }
+                }
+                else
+                {
+                    // The outer shape is the highest and lowest samples, a little dimmer, and the core is the RMS level
+                    g.setColour(colour.withMultipliedBrightness(0.78f));
+                    g.fillRect(x, top, width, juce::jmax(1.f, bottom - top));
+
+                    const float core = juce::jmin(rmsGain * scale, juce::jmax(0.f, juce::jmin(midY - top, bottom - midY)));
+                    g.setColour(colour.brighter(0.2f));
+                    g.fillRect(x, midY - core, width, juce::jmax(1.f, 2.f * core));
+                }
 
                 // A sample at full scale or beyond is a clip: its end is marked in red
                 constexpr float clipLevel = 0.999f;
@@ -932,8 +1001,7 @@ void WaveformView::paint(juce::Graphics& g)
 
         if (settings.peakHistory)
         {
-            const std::array<juce::Colour, 3> bandColours = Theme::flat ? std::array<juce::Colour, 3> { Theme::accent, juce::Colour(0xffeba7aa), juce::Colours::white }
-                                                                    : std::array<juce::Colour, 3> { juce::Colour(0xffff5a4a), juce::Colour(0xff55e08a), juce::Colour(0xff5aa8ff) };
+            const auto& bandColours = bandBodyColours;
             for (size_t band = 0; band < 3; ++band)
             {
                 g.setColour(bandColours[band].withAlpha(0.85f));

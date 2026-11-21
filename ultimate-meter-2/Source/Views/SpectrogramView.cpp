@@ -48,14 +48,6 @@ void SpectrogramView::setPalette(int index)
             stops({ { 0.0, 0xff000000 }, { 1.0, 0xffffffff } });
             break;
         default:
-            // In the identity the picture is ink, and the level rises through the red of the brand to white
-            if (Theme::flat)
-            {
-                stops({ { 0.0, Theme::displayTop.getARGB() }, { 0.3, 0xff26060a }, { 0.52, 0xff7c111a }, { 0.72, 0xffe01e2d },
-                        { 0.88, 0xffff9a9a }, { 1.0, 0xffffffff } });
-                break;
-            }
-
             // The picture is dark, and what is loud is a light in it. What is quiet is a hint of the blue of the
             // meters, and then the level rises through the amber of the signal to its yellow and on to a warm white,
             // so that the lightness rises with the level all the way. The blue meets the amber while both are dark:

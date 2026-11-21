@@ -1,7 +1,8 @@
 # ULTIMATE METER 2 · Jm Castillo
 
-Plugin de medición (VST3, AU y Standalone) para mezcla y mastering, con la identidad de
-[jmcastillo.es](https://jmcastillo.es) en modo oscuro: tinta, blanco hueso, el rojo de la marca e Inter Tight.
+Plugin de medición (VST3, AU y Standalone) para mezcla y mastering, con el tema **V2**:
+los colores del primer ULTIMATE METER puestos al día (planos, más oscuros y neutros), el logo de
+[jmcastillo.es](https://jmcastillo.es) e Inter Tight.
 
 Es un plugin distinto del primer ULTIMATE METER (otro código de plugin y otra carpeta de presets), así que los dos
 pueden estar instalados a la vez y las sesiones del primero no cambian.
@@ -15,10 +16,16 @@ History y Goniometer. En la columna lateral: niveles, sección de monitor (LR, R
 loudness, true peak, balance, correlación y desviación mono.
 
 **Multi** muestra varios módulos a la vez en filas y columnas que se arrastran. **Theme** cambia el esquema de
-color; "Jm Castillo" es el de la identidad y los del primer plugin siguen disponibles. **Presets** guarda y carga
+color; "V2" es el de por defecto y los del primer plugin siguen disponibles. **Presets** guarda y carga
 ajustes, con importación y exportación en archivos `.umpreset`.
 
 ## Cambios respecto al primer ULTIMATE METER
+
+- **Spectrum** como un analizador en tiempo real: promedio en potencia de todos los bloques (solape del 75 %), tiempo
+  de promedio ajustable (1000 ms por defecto), rango ajustable (de −18 a −78 dB por defecto), slope de 4,5 dB/oct,
+  suavizado de 1/6 de octava y Mid/Side relleno.
+- **Waveform** en 3 bandas superpuestas: graves en azul, medios en naranja y agudos en blanco, con filtros de cruce
+  de 24 dB/oct en 200 Hz y 2 kHz.
 
 - El VU está calibrado con un tono: un seno a −18 dBFS marca 0 VU con la calibración en −18.
 - La sección de monitor y la escucha de una referencia no entran nunca en un render offline, y el monitor no se

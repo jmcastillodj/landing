@@ -53,7 +53,9 @@ void SpectrumView::paintGrid(juce::Graphics& g)
             g.setColour(digit == 1 ? Theme::gridStrong : Theme::grid);
             g.fillRect(xOf(frequency), (float)plot.getY(), 1.f, (float)plot.getHeight());
 
-            if (digit == 1 || digit == 2 || digit == 5)
+            // Every first digit is named where there is room for it, as on an analyzer, and 1, 2 and 5 always
+            const bool roomy = plot.getWidth() >= 900 && digit != 7 && digit != 9;
+            if (digit == 1 || digit == 2 || digit == 5 || roomy)
             {
                 const auto text = frequency < 1000.0 ? juce::String((int)frequency) : juce::String((int)(frequency / 1000.0)) + "k";
                 g.setColour(digit == 1 ? Theme::textDim : Theme::textFaint);
@@ -63,15 +65,15 @@ void SpectrumView::paintGrid(juce::Graphics& g)
         }
     }
 
-    // A line for every 12 dB, stronger at 0
-    for (int decibels = 0; decibels > (int)minDecibels; decibels -= 12)
+    // A line for every 6 dB, or every 12 over a wide range, stronger at 0
+    const int step = maxDecibels - minDecibels <= 72.f ? 6 : 12;
+    for (int decibels = (int)std::floor(maxDecibels / (float)step) * step; decibels > (int)minDecibels; decibels -= step)
     {
         const float y = yOf((float)decibels);
         g.setColour(decibels == 0 ? Theme::gridStrong : Theme::grid);
         g.fillRect((float)plot.getX(), y, (float)plot.getWidth(), 1.f);
 
-        // The scale of levels is in the color of the curve that it measures
-        g.setColour(Theme::accent.withAlpha(decibels == 0 ? 0.9f : 0.55f));
+        g.setColour(Theme::textDim.withAlpha(decibels == 0 ? 1.f : 0.8f));
         g.drawText(juce::String(decibels), juce::Rectangle<float>((float)plot.getRight() + 4.f, y - 7.f, 28.f, 14.f), juce::Justification::centredLeft);
     }
 }
@@ -100,7 +102,10 @@ void SpectrumView::paint(juce::Graphics& g)
         {
             for (size_t i = 0; i < 2; ++i)
             {
-                g.setColour(colours[i].withAlpha(i == 0 ? 0.42f : 0.34f));
+                // The body is strongest under its line and thins out towards the foot of the plot
+                const auto base = i == 0 ? colours[0] : colours[1].interpolatedWith(juce::Colours::white, 0.35f);
+                g.setGradientFill(juce::ColourGradient(base.withAlpha(i == 0 ? 0.62f : 0.42f), 0.f, (float)plot.getY(),
+                                                       base.withAlpha(i == 0 ? 0.30f : 0.20f), 0.f, (float)plot.getBottom(), false));
                 g.fillPath(makePath(shown[i], true));
             }
 
@@ -347,8 +352,21 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
                 curve.clear();
     }
 
+    if (!juce::exactlyEqual(newSettings.rangeHiDb, maxDecibels) || !juce::exactlyEqual(newSettings.rangeLoDb, minDecibels))
+    {
+        maxDecibels = newSettings.rangeHiDb;
+        minDecibels = juce::jmin(newSettings.rangeLoDb, maxDecibels - 12.f);
+        grid.invalidate();
+    }
+
     settings = newSettings;
     display.numPoints = numPoints;
+
+    // With an averaging time the analyzer does the averaging, in power and over every block, and the curve is its
+    // reading. Without one the curve is the spectrum of the moment, with a fall of its own.
+    const bool averaged = settings.averageSeconds > 0.f;
+    display.longAverage = averaged;
+    source.getEngine().setLongAverageSeconds((double)settings.averageSeconds);
     display.tiltDbPerOctave = settings.tiltDbPerOctave;
     display.smoothingOctaves = settings.smoothingOctaves;
 
@@ -388,7 +406,7 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
         {
             const float value = correlation[(size_t)point];
             const auto colour = std::isnan(value) ? juce::Colours::transparentBlack
-                : (value >= 0.f ? Theme::second : Theme::over).withAlpha(std::abs(value));
+                : value >= 0.f ? Theme::accent.withAlpha(0.3f * value) : Theme::over.withAlpha(-value); // in phase is faint, out of phase is what has to be seen
             pixels.setPixelColour(point, 0, colour);
         }
     }
@@ -402,8 +420,9 @@ void SpectrumView::update(bool hasNewSpectra, const Settings& newSettings, float
     }
 
     // Move what is drawn towards the latest spectrum: quickly up, and slowly down
-    const float attack = 1.f - std::exp(-elapsedSeconds / attackSeconds);
-    const float release = 1.f - std::exp(-elapsedSeconds / settings.releaseSeconds);
+    // An averaged reading is only eased from one block to the next, the same way up and down
+    const float attack = 1.f - std::exp(-elapsedSeconds / (averaged ? 0.03f : attackSeconds));
+    const float release = averaged ? attack : 1.f - std::exp(-elapsedSeconds / settings.releaseSeconds);
     float furthestMoved = 0.f;
 
     for (size_t i = 0; i < curves.size(); ++i)

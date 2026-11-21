@@ -16,8 +16,9 @@
 class SpectrumView : public juce::Component
 {
 public:
-    static constexpr float maxDecibels = 6.f;
-    static constexpr float minDecibels = -96.f;
+    // The levels at the top and at the foot of the plot, which the settings give
+    float maxDecibels = -18.f;
+    float minDecibels = -78.f;
     static constexpr double minFrequency = 20.0;
     static constexpr double maxFrequency = 20000.0;
 
@@ -52,6 +53,8 @@ public:
         bool filled = false;           // Curves filled down to the foot of the plot, one over the other, each seen through the other
         int numBars = 31;
         float releaseSeconds = 0.30f;  // how slowly what is drawn falls back
+        float averageSeconds = 1.f;    // the averaging time of the analyzer, or 0 for the spectrum of the moment
+        float rangeHiDb = -18.f, rangeLoDb = -78.f;
         bool hasReference = false;     // A straight reference line, such as pink noise, drawn at the level of the signal
         float referenceSlopeDbPerOctave = 0.f;
         juce::String referenceName;
@@ -59,7 +62,8 @@ public:
         bool operator==(const Settings& other) const
         {
             return midSide == other.midSide && peakHold == other.peakHold && hasReference == other.hasReference
-                && bars == other.bars && filled == other.filled && numBars == other.numBars && juce::exactlyEqual(releaseSeconds, other.releaseSeconds)
+                && bars == other.bars && filled == other.filled && juce::exactlyEqual(averageSeconds, other.averageSeconds)
+                && juce::exactlyEqual(rangeHiDb, other.rangeHiDb) && juce::exactlyEqual(rangeLoDb, other.rangeLoDb) && numBars == other.numBars && juce::exactlyEqual(releaseSeconds, other.releaseSeconds)
                 && juce::exactlyEqual(referenceSlopeDbPerOctave, other.referenceSlopeDbPerOctave)
                 && juce::exactlyEqual(tiltDbPerOctave, other.tiltDbPerOctave)
                 && juce::exactlyEqual(smoothingOctaves, other.smoothingOctaves);

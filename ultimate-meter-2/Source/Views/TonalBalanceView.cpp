@@ -10,7 +10,7 @@ namespace
     const juce::Identifier targetNameProperty { "tonalTarget" };
     const juce::Identifier customTargetsProperty { "tonalCustomTargets" };
 
-    juce::Colour targetColourNow() { return Theme::flat ? Theme::warn : juce::Colour(0xff2ec4b6); }
+    juce::Colour targetColourNow() { return juce::Colour(0xff2ec4b6); }
     const juce::Colour measuredColour { 0xffe3eaf1 };
 
     }

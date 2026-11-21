@@ -45,10 +45,15 @@ public:
         double maxFrequency = 20000.0;
         float tiltDbPerOctave = 0.f;    // slope added around 1 kHz, 4.5 makes pink-ish music look flat
         float smoothingOctaves = 0.f;   // width of the averaging band, 0 for none
+        bool longAverage = false;       // the spectra averaged over the long time, which is what an analyzer shows
     };
 
     static constexpr float silenceDb = -150.f;
     static constexpr double averagingSeconds = 0.12;
+
+    // The time of the long average, as the averaging time of a real-time analyzer: the spectra are averaged in power
+    // with this time constant, over every block of the signal
+    void setLongAverageSeconds(double seconds) { longAverageSeconds = juce::jmax(0.01, seconds); }
 
     SpectrumEngine()
     {
@@ -72,7 +77,7 @@ public:
         for (auto& buffer : fftData)
             buffer.assign(static_cast<size_t>(size) * 2, 0.f);
 
-        for (auto* spectrum : { &powerLeft, &powerRight, &cross })
+        for (auto* spectrum : { &powerLeft, &powerRight, &cross, &longLeft, &longRight, &longCross })
             spectrum->assign(static_cast<size_t>(numBins), 0.0);
 
         cumulative.assign(static_cast<size_t>(numBins) + 1, 0.0);
@@ -85,7 +90,7 @@ public:
     // Forgets the averages, so that the next analysis starts afresh
     void reset()
     {
-        for (auto* spectrum : { &powerLeft, &powerRight, &cross })
+        for (auto* spectrum : { &powerLeft, &powerRight, &cross, &longLeft, &longRight, &longCross })
             std::fill(spectrum->begin(), spectrum->end(), 0.0);
 
         hasAverage = false;
@@ -111,6 +116,7 @@ public:
         // A sine of amplitude 1 has a magnitude of sum(window) / 2 = size / 4 in its bin
         const double scale = 16.0 / (static_cast<double>(size) * static_cast<double>(size));
         const double keep = hasAverage ? std::exp(-static_cast<double>(elapsedSeconds) / averagingSeconds) : 0.0;
+        const double keepLong = hasAverage ? std::exp(-static_cast<double>(elapsedSeconds) / longAverageSeconds) : 0.0;
 
         for (int bin = 0; bin < numBins; ++bin)
         {
@@ -125,6 +131,10 @@ public:
             powerLeft[index] = newLeft + keep * (powerLeft[index] - newLeft);
             powerRight[index] = newRight + keep * (powerRight[index] - newRight);
             cross[index] = newCross + keep * (cross[index] - newCross);
+
+            longLeft[index] = newLeft + keepLong * (longLeft[index] - newLeft);
+            longRight[index] = newRight + keepLong * (longRight[index] - newRight);
+            longCross[index] = newCross + keepLong * (longCross[index] - newCross);
         }
 
         hasAverage = true;
@@ -134,6 +144,7 @@ public:
     void render(Curve curve, const Display& display, double sampleRate, std::vector<float>& decibels)
     {
         decibels.resize(static_cast<size_t>(display.numPoints));
+        renderLong = display.longAverage;
 
         // Only the band averages of smoothing need the running total
         if (display.smoothingOctaves > 0.f)
@@ -255,12 +266,16 @@ public:
 private:
     double powerOf(Curve curve, size_t bin) const
     {
+        const double l = renderLong ? longLeft[bin] : powerLeft[bin];
+        const double r = renderLong ? longRight[bin] : powerRight[bin];
+        const double c = renderLong ? longCross[bin] : cross[bin];
+
         switch (curve)
         {
-            case Curve::left:  return powerLeft[bin];
-            case Curve::right: return powerRight[bin];
-            case Curve::mid:   return juce::jmax(0.0, 0.25 * (powerLeft[bin] + powerRight[bin] + 2.0 * cross[bin]));
-            case Curve::side:  return juce::jmax(0.0, 0.25 * (powerLeft[bin] + powerRight[bin] - 2.0 * cross[bin]));
+            case Curve::left:  return l;
+            case Curve::right: return r;
+            case Curve::mid:   return juce::jmax(0.0, 0.25 * (l + r + 2.0 * c));
+            case Curve::side:  return juce::jmax(0.0, 0.25 * (l + r - 2.0 * c));
         }
 
         return 0.0;
@@ -323,6 +338,9 @@ private:
 
     // The spectra averaged over time
     std::vector<double> powerLeft, powerRight, cross;
+    std::vector<double> longLeft, longRight, longCross;
+    double longAverageSeconds = 1.0;
+    bool renderLong = false;
     bool hasAverage = false;
 
     // Working storage, kept between calls so that a frame allocates nothing

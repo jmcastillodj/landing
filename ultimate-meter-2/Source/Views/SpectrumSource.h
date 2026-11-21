@@ -16,31 +16,47 @@ class SpectrumSource
 public:
     explicit SpectrumSource(UltimateMeterAudioProcessor& p) : audioProcessor(p) {}
 
-    // Analyzes the newest audio with an FFT of 2^order samples. Returns false, and leaves the
-    // spectra as they were, if no audio has arrived since the last call.
-    bool update(float elapsedSeconds, int order)
+    // Analyzes the audio that has arrived since the last call, with FFTs of 2^order samples that overlap by three
+    // quarters, so that every sample is measured and counts the same, as in a real-time analyzer. Returns false, and
+    // leaves the spectra as they were, if no block was due.
+    bool update(float, int order)
     {
         if (order != engine.getOrder())
         {
             engine.setOrder(order);
-            lastTotalWritten = 0;
+            lastAnalysed = 0;
         }
 
         auto& ringBuffer = audioProcessor.sampleRingBuffer;
-
         const auto totalWritten = ringBuffer.getTotalWritten();
-        if (totalWritten == lastTotalWritten)
+        const auto size = (juce::uint64)engine.getSize();
+        const auto hop = size / 4;
+
+        // The buffer starts again when the host prepares the plugin, and after a long pause of the window what was
+        // missed is let go, since the buffer no longer holds it
+        if (totalWritten < lastAnalysed || totalWritten - lastAnalysed > maxBlocksPerUpdate * hop)
+            lastAnalysed = totalWritten > hop ? totalWritten - hop : 0;
+
+        if (totalWritten < size)
             return false;
 
         analysisBuffer.setSize(2, engine.getSize(), false, false, true);
+        const float hopSeconds = (float)((double)hop / getSampleRate());
+        bool analysed = false;
 
-        // Keep the previous spectra if the audio thread overwrote the samples during the copy
-        if (!ringBuffer.readLatest(analysisBuffer.getWritePointer(0), analysisBuffer.getWritePointer(1), engine.getSize()))
-            return false;
+        while (lastAnalysed + hop <= totalWritten)
+        {
+            const auto end = lastAnalysed + hop;
+            lastAnalysed = end;
 
-        lastTotalWritten = totalWritten;
-        engine.analyze(analysisBuffer.getReadPointer(0), analysisBuffer.getReadPointer(1), elapsedSeconds);
-        return true;
+            if (end < size || !ringBuffer.readEndingAt(analysisBuffer.getWritePointer(0), analysisBuffer.getWritePointer(1), engine.getSize(), end))
+                continue;
+
+            engine.analyze(analysisBuffer.getReadPointer(0), analysisBuffer.getReadPointer(1), hopSeconds);
+            analysed = true;
+        }
+
+        return analysed;
     }
 
     SpectrumEngine& getEngine() { return engine; }
@@ -58,6 +74,7 @@ private:
     // The most recent samples of both channels, which the FFTs analyze
     juce::AudioBuffer<float> analysisBuffer;
 
-    // The ring buffer's sample count at the last analysis, to skip frames without new audio
-    juce::uint64 lastTotalWritten = 0;
+    // The count of samples at the end of the last block that was analyzed
+    juce::uint64 lastAnalysed = 0;
+    static constexpr juce::uint64 maxBlocksPerUpdate = 12;
 };

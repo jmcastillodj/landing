@@ -11,72 +11,72 @@
 // Every color, font and measurement of the interface is here, so that the look
 // can be changed in one place.
 //
-// The look is the identity of Jm Castillo (jmcastillo.es), in its dark form: ink for the ground, bone white for
-// the text and the signal, the red of the brand for what is chosen and for the main signal, one typeface (Inter
-// Tight), flat colours and lines of one pixel. Nothing has a gradient, a shadow or a glow. The other colour
-// schemes of the first ULTIMATE METER are still there to be chosen.
+// The look, V2, is that of the first ULTIMATE METER brought up to date: the same meaning in every colour (blue for
+// the left or mid channel, orange for the right or side, green, yellow and red for a level), on flat, darker and
+// more neutral surfaces with lines of one pixel, in Inter Tight, with the logo of Jm Castillo in the header. Nothing
+// has a bevel, a shadow or a glow. The colour schemes of the first ULTIMATE METER are still there to be chosen.
 namespace Theme
 {
     // Chrome: the header and the bottom bar
-    inline juce::Colour chromeTop { 0xff0a0a0a };
-    inline juce::Colour chromeBottom { 0xff0a0a0a };
-    inline juce::Colour chromeInsetTop { 0xff0a0a0a };
-    inline juce::Colour chromeInsetBottom { 0xff0a0a0a };
-    inline juce::Colour footerTop { 0xff0a0a0a };
-    inline juce::Colour footerBottom { 0xff0a0a0a };
-    inline juce::Colour edge { 0xff262626 };
-    inline juce::Colour window { 0xff1f1f1f };
+    inline juce::Colour chromeTop { 0xff16181c };
+    inline juce::Colour chromeBottom { 0xff16181c };
+    inline juce::Colour chromeInsetTop { 0xff101114 };
+    inline juce::Colour chromeInsetBottom { 0xff101114 };
+    inline juce::Colour footerTop { 0xff16181c };
+    inline juce::Colour footerBottom { 0xff131519 };
+    inline juce::Colour edge { 0xff25282e };
+    inline juce::Colour window { 0xff1b1d22 };
 
     // Displays
-    inline juce::Colour displayTop { 0xff0a0a0a };
-    inline juce::Colour displayBottom { 0xff0a0a0a };
-    inline juce::Colour display { 0xff0a0a0a };
-    inline juce::Colour track { 0xff1c1c1c };
-    inline juce::Colour grid { 0xff1e1e1e };
-    inline juce::Colour gridStrong { 0xff343434 };
+    inline juce::Colour displayTop { 0xff0e0f12 };
+    inline juce::Colour displayBottom { 0xff0e0f12 };
+    inline juce::Colour display { 0xff0e0f12 };
+    inline juce::Colour track { 0xff1e2126 };
+    inline juce::Colour grid { 0xff1d2025 };
+    inline juce::Colour gridStrong { 0xff333842 };
 
     // Floating panels and menus
-    inline juce::Colour panel { 0xff161616 };
-    inline juce::Colour panelEdge { 0xff3a3a3a };
-    inline juce::Colour menu { 0xff161616 };
-    inline juce::Colour menuHighlight { 0xffe01e2d };
+    inline juce::Colour panel { 0xff1a1c21 };
+    inline juce::Colour panelEdge { 0xff3b404a };
+    inline juce::Colour menu { 0xff1a1c21 };
+    inline juce::Colour menuHighlight { 0xff2b7fd6 };
 
     // Text: grey labels in front of pale values
-    inline juce::Colour text { 0xfff1f0ee };
-    inline juce::Colour textDim { 0xff9a9895 };
-    inline juce::Colour textFaint { 0xff62615f };
-    inline juce::Colour knobLabel { 0xffc9c7c3 };
+    inline juce::Colour text { 0xffe6e8ec };
+    inline juce::Colour textDim { 0xff9299a4 };
+    inline juce::Colour textFaint { 0xff5d636d };
+    inline juce::Colour knobLabel { 0xffbfc5cd };
     inline juce::Colour wordmarkTop { 0xffffffff };
     inline juce::Colour wordmarkBottom { 0xffffffff };
 
     // Signal
-    inline juce::Colour accent { 0xffe01e2d };
-    inline juce::Colour accentDeep { 0xff5c0d13 };
-    inline juce::Colour second { 0xfff1f0ee };
-    inline juce::Colour secondDeep { 0xff5a5957 };
-    inline juce::Colour warn { 0xffe2b23c };
+    inline juce::Colour accent { 0xff4aa8ff };
+    inline juce::Colour accentDeep { 0xff1c4f85 };
+    inline juce::Colour second { 0xffff9d3c };
+    inline juce::Colour secondDeep { 0xff6e4416 };
+    inline juce::Colour warn { 0xfff5c83a };
 
     // The green of a meter, as Studio One's are: deep at the foot of a bar, and brighter towards its top
-    inline juce::Colour meterDeep { 0xff6f6e6c };
-    inline juce::Colour meterMid { 0xffb9b7b4 };
-    inline juce::Colour meterLight { 0xfff1f0ee };
+    inline juce::Colour meterDeep { 0xff16703f };
+    inline juce::Colour meterMid { 0xff26b35c };
+    inline juce::Colour meterLight { 0xff4ade80 };
     inline juce::Colour held { 0xffffffff };
-    inline juce::Colour target { 0xffd9dee4 };
-    inline juce::Colour good { 0xfff1f0ee };
-    inline juce::Colour over { 0xffff2d2d };
+    inline juce::Colour target { 0xff4ade80 };
+    inline juce::Colour good { 0xff4ade80 };
+    inline juce::Colour over { 0xfff0483a };
 
     //==============================================================================
     // The colour schemes. A scheme is the whole palette above, in the order that it is declared there, and the
     // colours of the interface change to it when it is applied.
-    inline const juce::StringArray themeNames { "Jm Castillo", "Studio", "Neon Noir", "Emerald", "Aurora", "Ember" };
+    inline const juce::StringArray themeNames { "V2", "Studio", "Neon Noir", "Emerald", "Aurora", "Ember" };
     inline int currentTheme = 0;
-    inline bool flat = true; // the identity has no shadows and no glows, the older schemes keep theirs
+    inline bool flat = true; // V2 has no bevels, shadows or glows, the older schemes keep theirs
     inline int version = 0; // counts the changes, so that images that were made of the colours can be made again
 
     inline void apply(int index)
     {
         static const juce::uint32 schemes[][36] = {
-        { /* Jm Castillo */ 0xff0a0a0a, 0xff0a0a0a, 0xff0a0a0a, 0xff0a0a0a, 0xff0a0a0a, 0xff0a0a0a, 0xff262626, 0xff1f1f1f, 0xff0a0a0a, 0xff0a0a0a, 0xff0a0a0a, 0xff1c1c1c, 0xff1e1e1e, 0xff343434, 0xff161616, 0xff3a3a3a, 0xff161616, 0xffe01e2d, 0xfff1f0ee, 0xff9a9895, 0xff62615f, 0xffc9c7c3, 0xffffffff, 0xffffffff, 0xffe01e2d, 0xff5c0d13, 0xfff1f0ee, 0xff5a5957, 0xffe2b23c, 0xff6f6e6c, 0xffb9b7b4, 0xfff1f0ee, 0xffffffff, 0xffd9dee4, 0xfff1f0ee, 0xffff2d2d },
+        { /* V2 */ 0xff16181c, 0xff16181c, 0xff101114, 0xff101114, 0xff16181c, 0xff131519, 0xff25282e, 0xff1b1d22, 0xff0e0f12, 0xff0e0f12, 0xff0e0f12, 0xff1e2126, 0xff1d2025, 0xff333842, 0xff1a1c21, 0xff3b404a, 0xff1a1c21, 0xff2b7fd6, 0xffe6e8ec, 0xff9299a4, 0xff5d636d, 0xffbfc5cd, 0xffffffff, 0xffffffff, 0xff4aa8ff, 0xff1c4f85, 0xffff9d3c, 0xff6e4416, 0xfff5c83a, 0xff16703f, 0xff26b35c, 0xff4ade80, 0xffffffff, 0xff4ade80, 0xff4ade80, 0xfff0483a },
         { /* Studio */ 0xff40444b, 0xff2f3237, 0xff202226, 0xff17181b, 0xff34373d, 0xff2a2c31, 0xff121316, 0xff0d0e10, 0xff15171b, 0xff1d2026, 0xff181b1f, 0xff23262c, 0xff272b32, 0xff3a3f48, 0xff2b2e34, 0xff535963, 0xff2b2e34, 0xff2a78c8, 0xffdde0e5, 0xff9298a2, 0xff606670, 0xffbcc1c9, 0xffffffff, 0xffb7bdc7, 0xff3d9df5, 0xff1d4f82, 0xfff0922b, 0xff6a4216, 0xfff2c82e, 0xff17653a, 0xff22a553, 0xff45d36f, 0xffffffff, 0xff45d36f, 0xff45d36f, 0xffe5483a },
         { /* Neon Noir */ 0xff2b2236, 0xff1d1727, 0xff120e1a, 0xff0b0810, 0xff241c30, 0xff19131f, 0xff07050a, 0xff050308, 0xff0d0a14, 0xff150f1f, 0xff110c19, 0xff1d1629, 0xff231a30, 0xff3a2c4f, 0xff231a30, 0xff5a4678, 0xff1d1527, 0xff7b2fd6, 0xfff1e9ff, 0xffa593c4, 0xff655577, 0xffcdbfe6, 0xffffffff, 0xffc9b6ee, 0xff25e2f5, 0xff0f6a7a, 0xffff3fa4, 0xff7a1c52, 0xffffd84a, 0xff17653a, 0xff22a553, 0xff45d36f, 0xffffffff, 0xff45d36f, 0xff45d36f, 0xffe5483a },
         { /* Emerald */ 0xff22302a, 0xff17211c, 0xff0f1613, 0xff0a0f0d, 0xff1d2923, 0xff151e19, 0xff060a08, 0xff040806, 0xff0b120f, 0xff111b16, 0xff0e1612, 0xff18241e, 0xff1b2a23, 0xff2e4639, 0xff1b2822, 0xff466555, 0xff16211b, 0xff14946a, 0xffe3f1ea, 0xff8fa89b, 0xff58695f, 0xffb7cfc3, 0xffffffff, 0xffb5ccc0, 0xff2ee59d, 0xff126a4c, 0xffe8b64a, 0xff6b5416, 0xfff4d03f, 0xff0f5b50, 0xff1da58e, 0xff4be3c4, 0xffffffff, 0xff4be3c4, 0xff4be3c4, 0xffe5483a },
